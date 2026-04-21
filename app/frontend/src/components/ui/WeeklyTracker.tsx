@@ -218,8 +218,6 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
                             style={
                               checked
                                 ? { background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }
-                                : isToday
-                                ? { ringColor: theme.from }
                                 : undefined
                             }
                             aria-label={`${format(d, 'EEE MMM d')}: ${checked ? 'done' : 'not done'}`}
