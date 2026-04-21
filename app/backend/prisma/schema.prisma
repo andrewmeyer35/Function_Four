@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  name        String?
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+
+  memberships HouseholdMember[]
+  checkins    Checkin[]
+  reactions   Reaction[]
+
+  @@map("users")
+}
+
+model Household {
+  id          String   @id @default(uuid())
+  name        String
+  inviteCode  String   @unique @default(cuid())
+  createdAt   DateTime @default(now())
+
+  members     HouseholdMember[]
+  checkins    Checkin[]
+
+  @@map("households")
+}
+
+model HouseholdMember {
+  userId      String
+  householdId String
+  role        String   @default("member")
+  joinedAt    DateTime @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@id([userId, householdId])
+  @@map("household_members")
+}
+
+model Checkin {
+  id            String   @id @default(uuid())
+  userId        String
+  householdId   String
+  weekStart     DateTime // Always the Monday of that week, time=00:00:00 UTC
+  financialText String?
+  fitnessText   String?
+  funText       String?
+  flirtText     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household     Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  reactions     Reaction[]
+
+  @@unique([userId, householdId, weekStart])
+  @@map("checkins")
+}
+
+model Reaction {
+  id        String   @id @default(uuid())
+  checkinId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  checkin   Checkin  @relation(fields: [checkinId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([checkinId, userId, emoji])
+  @@map("reactions")
+}

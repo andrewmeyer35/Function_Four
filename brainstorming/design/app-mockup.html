@@ -1,0 +1,919 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roommate · Web App Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: oklch(62% 0.19 254);
+    --primary-soft: oklch(62% 0.19 254 / 0.12);
+    --primary-ring: oklch(62% 0.19 254 / 0.35);
+    --success: oklch(68% 0.16 150);
+    --warning: oklch(74% 0.14 75);
+    --danger: oklch(62% 0.20 25);
+
+    --bg: oklch(14% 0.015 255);
+    --surface: oklch(18% 0.015 255);
+    --surface-2: oklch(22% 0.015 255);
+    --surface-3: oklch(26% 0.015 255);
+    --border: oklch(28% 0.01 255);
+    --border-strong: oklch(38% 0.01 255);
+    --text: oklch(96% 0.005 255);
+    --text-muted: oklch(72% 0.01 255);
+    --text-subtle: oklch(55% 0.01 255);
+
+    --r-chip: 8px;
+    --r-card: 14px;
+    --r-sheet: 20px;
+
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+    --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+    --sh-1: 0 1px 2px rgb(0 0 0 / 0.35);
+    --sh-2: 0 4px 16px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.2);
+    --sh-3: 0 20px 60px rgb(0 0 0 / 0.5), 0 8px 20px rgb(0 0 0 / 0.3);
+
+    --mot: 200ms cubic-bezier(.2,.0,.0,1);
+    --mot-slow: 300ms cubic-bezier(.2,.0,.0,1);
+  }
+
+  [data-theme="light"] {
+    --bg: oklch(98.5% 0.005 255);
+    --surface: oklch(100% 0 0);
+    --surface-2: oklch(97% 0.005 255);
+    --surface-3: oklch(94% 0.005 255);
+    --border: oklch(90% 0.005 255);
+    --border-strong: oklch(78% 0.005 255);
+    --text: oklch(18% 0.015 255);
+    --text-muted: oklch(42% 0.01 255);
+    --text-subtle: oklch(58% 0.01 255);
+    --sh-1: 0 1px 2px rgb(0 0 0 / 0.05);
+    --sh-2: 0 4px 16px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.04);
+    --sh-3: 0 20px 60px rgb(0 0 0 / 0.12), 0 8px 20px rgb(0 0 0 / 0.06);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 400 15px/1.55 Inter;
+    font-feature-settings: "cv11", "ss01", "tnum";
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; }
+
+  /* ============ LAYOUT ============ */
+  .app {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    padding: var(--s5);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: var(--s5);
+    position: sticky; top: 0; height: 100vh;
+    background: var(--bg);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font: 700 17px/1 Inter; letter-spacing: -0.01em;
+  }
+  .brand-dot {
+    width: 24px; height: 24px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--primary), oklch(75% 0.16 200));
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06) inset;
+  }
+
+  .house-pill {
+    display: flex; align-items: center; gap: var(--s3);
+    padding: var(--s3) var(--s4);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    cursor: pointer; transition: background var(--mot);
+  }
+  .house-pill:hover { background: var(--surface-2); }
+  .house-pill-title { font: 600 13px/1.2 Inter; }
+  .house-pill-sub { font: 500 11px/1.2 Inter; color: var(--text-subtle); letter-spacing: 0.05em; text-transform: uppercase; margin-top: 3px; }
+
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav-section {
+    font: 500 11px/1.2 Inter; color: var(--text-subtle);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 0 var(--s3) var(--s2);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: var(--s3);
+    padding: 8px var(--s3); border-radius: 8px;
+    font: 500 14px/1.2 Inter; color: var(--text-muted);
+    cursor: pointer; transition: background var(--mot), color var(--mot);
+    background: transparent; border: 0; text-align: left; width: 100%;
+  }
+  .nav-item:hover { background: var(--surface); color: var(--text); }
+  .nav-item.active { background: var(--primary-soft); color: var(--primary); }
+  .nav-icon { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; flex-shrink: 0; }
+  .nav-count {
+    margin-left: auto; font: var(--micro);
+    font: 500 11px/1 Inter; color: var(--text-subtle);
+    background: var(--surface-2); padding: 2px 6px; border-radius: 4px;
+  }
+
+  .spacer { flex: 1; }
+
+  .me-card {
+    display: flex; align-items: center; gap: var(--s3);
+    padding: var(--s3); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, oklch(68% 0.16 280), oklch(72% 0.15 320));
+    display: grid; place-items: center; font: 600 13px Inter; color: white;
+    flex-shrink: 0;
+  }
+  .avatar.s { width: 22px; height: 22px; font-size: 11px; }
+  .avatar.l { width: 40px; height: 40px; font-size: 15px; }
+  .me-name { font: 600 13px Inter; line-height: 1.2; }
+  .me-role { font: 500 11px Inter; color: var(--text-subtle); }
+
+  /* MAIN */
+  main {
+    padding: var(--s5) var(--s7) var(--s8);
+    min-width: 0;
+  }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--s6); gap: var(--s4);
+  }
+  .topbar-title { font: 700 22px/1 Inter; letter-spacing: -0.01em; }
+  .topbar-sub { font: 500 13px Inter; color: var(--text-subtle); margin-top: 4px; }
+
+  .topbar-actions { display: flex; gap: var(--s3); align-items: center; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    display: grid; place-items: center; cursor: pointer;
+    transition: background var(--mot);
+  }
+  .icon-btn:hover { background: var(--surface-2); }
+  .icon-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; color: var(--text-muted); }
+
+  .theme-switch {
+    display: inline-flex; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px;
+  }
+  .theme-switch button {
+    background: transparent; color: var(--text-muted); border: 0;
+    padding: 6px 12px; font: 500 12px Inter; border-radius: 999px; cursor: pointer;
+    transition: background var(--mot), color var(--mot);
+  }
+  .theme-switch button[aria-pressed="true"] { background: var(--primary-soft); color: var(--primary); }
+
+  /* VIEW SWITCHER - simple route-like */
+  .view { display: none; animation: fadeIn 240ms ease-out; }
+  .view.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* BENTO */
+  .bento {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: var(--s4);
+  }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-card); padding: var(--s5);
+    transition: border-color var(--mot), transform var(--mot), box-shadow var(--mot);
+    min-height: 120px;
+  }
+  .tile:hover { border-color: var(--border-strong); }
+  .tile.interactive { cursor: pointer; }
+  .tile.interactive:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+
+  .tile-label { font: 500 11px Inter; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: var(--s3); }
+  .tile-value { font: 700 40px/1 Inter; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .tile-delta { font: 500 12px Inter; color: var(--text-muted); margin-top: var(--s2); }
+  .tile-delta.up { color: var(--success); }
+
+  .tile.streak {
+    grid-column: span 2;
+    background:
+      radial-gradient(800px circle at 0% 0%, oklch(62% 0.19 254 / 0.12), transparent 50%),
+      var(--surface);
+  }
+  .tile.streak .tile-value {
+    background: linear-gradient(135deg, var(--primary), oklch(75% 0.16 200));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tile.today { grid-column: span 4; }
+  .tile.people { grid-column: span 3; }
+  .tile.heat { grid-column: span 3; }
+  .tile.feed { grid-column: span 6; }
+
+  @media (max-width: 980px) {
+    .bento { grid-template-columns: repeat(2, 1fr); }
+    .tile.streak, .tile.today, .tile.people, .tile.heat, .tile.feed { grid-column: span 2; }
+    .app { grid-template-columns: 1fr; }
+    .sidebar { position: relative; height: auto; flex-direction: row; overflow-x: auto; }
+    .nav { flex-direction: row; }
+    main { padding: var(--s4); }
+  }
+
+  /* TODAY LIST */
+  .today-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--s4);
+  }
+  .today-title { font: 600 16px Inter; }
+  .today-list { display: flex; flex-direction: column; gap: var(--s2); }
+
+  .task {
+    display: flex; align-items: center; gap: var(--s3);
+    padding: 12px 14px; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid transparent;
+    transition: background var(--mot), border-color var(--mot), opacity var(--mot);
+  }
+  .task:hover { background: var(--surface-3); border-color: var(--border); }
+  .task[data-done="true"] { opacity: 0.55; }
+  .task[data-done="true"] .task-title { text-decoration: line-through; color: var(--text-subtle); }
+
+  .check {
+    width: 20px; height: 20px; border-radius: 6px;
+    border: 1.5px solid var(--border-strong); flex-shrink: 0;
+    display: grid; place-items: center;
+    transition: background var(--mot), border-color var(--mot), transform var(--mot);
+    cursor: pointer;
+  }
+  .check:hover { border-color: var(--primary); }
+  .check[data-checked="true"] { background: var(--success); border-color: var(--success); transform: scale(1.05); }
+  .check svg { width: 12px; height: 12px; stroke: white; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity var(--mot); }
+  .check[data-checked="true"] svg { opacity: 1; }
+
+  .task-meta { flex: 1; min-width: 0; }
+  .task-title { font: 500 14px/1.2 Inter; margin-bottom: 3px; }
+  .task-sub { font: 500 12px/1.2 Inter; color: var(--text-subtle); }
+  .task-assign { display: flex; align-items: center; gap: 8px; }
+  .task-chip {
+    font: 500 11px Inter; letter-spacing: 0.03em;
+    padding: 3px 8px; border-radius: 6px;
+    background: var(--surface-3); color: var(--text-muted);
+  }
+  .task-chip.warn { background: color-mix(in oklch, var(--warning) 20%, transparent); color: var(--warning); }
+  .task-chip.ok { background: color-mix(in oklch, var(--success) 20%, transparent); color: var(--success); }
+
+  /* PEOPLE TILE */
+  .people-list { display: flex; flex-direction: column; gap: var(--s3); }
+  .person {
+    display: flex; align-items: center; gap: var(--s3);
+  }
+  .person-name { font: 500 13px Inter; flex-shrink: 0; width: 64px; }
+  .track {
+    flex: 1; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden;
+  }
+  .fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--primary), oklch(75% 0.16 200));
+    transition: width var(--mot-slow);
+  }
+  .person-pct { font: 500 12px "JetBrains Mono"; color: var(--text-muted); width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* HEATMAP TILE */
+  .heatmap {
+    display: grid; grid-template-columns: repeat(26, 1fr); gap: 2px;
+    margin-top: var(--s3);
+  }
+  .hm { aspect-ratio: 1; border-radius: 2px; background: var(--surface-2); transition: background var(--mot); }
+  .hm.l1 { background: color-mix(in oklch, var(--primary) 25%, var(--surface-2)); }
+  .hm.l2 { background: color-mix(in oklch, var(--primary) 50%, var(--surface-2)); }
+  .hm.l3 { background: color-mix(in oklch, var(--primary) 75%, var(--surface-2)); }
+  .hm.l4 { background: var(--primary); }
+  .heatmap-legend { display: flex; align-items: center; gap: 6px; margin-top: var(--s3); font: 500 11px Inter; color: var(--text-subtle); }
+  .heatmap-legend .hm { width: 10px; }
+
+  /* FEED TILE */
+  .feed { display: flex; flex-direction: column; gap: var(--s3); }
+  .event {
+    display: flex; align-items: center; gap: var(--s3);
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .event:last-child { border-bottom: 0; }
+  .event-text { flex: 1; font: 500 13px/1.3 Inter; }
+  .event-text strong { font-weight: 600; }
+  .event-time { font: 500 12px "JetBrains Mono"; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
+  .event-reactions { display: flex; gap: 4px; }
+  .reaction {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--surface-2); border: 1px solid var(--border);
+    display: grid; place-items: center; font-size: 12px;
+    cursor: pointer; transition: transform var(--mot), background var(--mot);
+  }
+  .reaction:hover { transform: scale(1.15); background: var(--surface-3); }
+  .reaction.active { background: var(--primary-soft); border-color: var(--primary); }
+
+  /* PRIMARY BTN */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid transparent; border-radius: 8px;
+    padding: 8px 14px; font: 500 13px Inter; cursor: pointer;
+    transition: background var(--mot), transform var(--mot), box-shadow var(--mot);
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { box-shadow: 0 0 0 4px var(--primary-ring); }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--border-strong); }
+  .btn-ghost:hover { background: var(--surface); }
+
+  /* COMPOSER SHEET */
+  .composer-backdrop {
+    position: fixed; inset: 0; background: rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(2px);
+    opacity: 0; pointer-events: none; transition: opacity var(--mot-slow); z-index: 50;
+  }
+  .composer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  .composer {
+    position: fixed; left: 50%; bottom: var(--s5); transform: translateX(-50%) translateY(120%);
+    width: min(560px, calc(100% - 32px));
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-sheet); box-shadow: var(--sh-3); padding: var(--s5);
+    transition: transform var(--mot-slow); z-index: 51;
+  }
+  .composer.open { transform: translateX(-50%) translateY(0); }
+  .composer h3 { font: 600 15px Inter; margin: 0 0 var(--s3); }
+  .composer input[type="text"] {
+    width: 100%; padding: 12px 14px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font: 400 15px Inter;
+    outline: none; transition: border-color var(--mot), box-shadow var(--mot);
+  }
+  .composer input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+  .composer-chips { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+  .composer-chip {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px;
+    font: 500 12px Inter; color: var(--text-muted); cursor: pointer; background: transparent;
+    transition: background var(--mot), color var(--mot), border-color var(--mot);
+  }
+  .composer-chip:hover { border-color: var(--border-strong); color: var(--text); }
+  .composer-chip.active { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
+  .composer-actions { display: flex; justify-content: space-between; align-items: center; margin-top: var(--s4); gap: var(--s3); }
+  .composer-hint { font: 500 11px Inter; color: var(--text-subtle); }
+
+  /* PEOPLE VIEW */
+  .people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--s4); }
+  .person-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card);
+    padding: var(--s5); transition: border-color var(--mot);
+  }
+  .person-card:hover { border-color: var(--border-strong); }
+  .person-card-top { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s4); }
+  .person-card-name { font: 600 15px Inter; }
+  .person-card-meta { font: 500 12px Inter; color: var(--text-subtle); margin-top: 2px; }
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: var(--s2) 0; border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: 0; }
+  .stat-label { font: 500 12px Inter; color: var(--text-muted); }
+  .stat-value { font: 600 14px "JetBrains Mono"; font-variant-numeric: tabular-nums; }
+
+  /* INSIGHTS VIEW */
+  .insights-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); margin-bottom: var(--s5); }
+  @media (max-width: 820px) { .insights-row { grid-template-columns: 1fr; } }
+  .stat-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: var(--s5); }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: var(--s5); }
+
+  /* toast */
+  .toast {
+    position: fixed; bottom: var(--s5); right: var(--s5);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--sh-2); padding: 10px 14px;
+    font: 500 13px Inter;
+    display: flex; align-items: center; gap: var(--s2);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity var(--mot-slow), transform var(--mot-slow);
+    pointer-events: none; z-index: 60;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+
+  /* fab */
+  .fab {
+    position: fixed; right: var(--s5); bottom: var(--s5);
+    width: 52px; height: 52px; border-radius: 16px;
+    background: var(--primary); color: white; border: 0;
+    display: grid; place-items: center; cursor: pointer;
+    box-shadow: var(--sh-2), 0 0 0 1px rgb(255 255 255 / 0.1) inset;
+    transition: transform var(--mot), box-shadow var(--mot);
+    z-index: 40;
+  }
+  .fab:hover { transform: translateY(-2px); box-shadow: var(--sh-3), 0 0 0 1px rgb(255 255 255 / 0.1) inset; }
+  .fab:active { transform: translateY(0); }
+  .fab svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; }
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-dot"></span>Roommate</div>
+
+    <div class="house-pill">
+      <div style="flex:1">
+        <div class="house-pill-title">Maple Street</div>
+        <div class="house-pill-sub">3 roommates · 28-day streak</div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color: var(--text-subtle)"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+
+    <div class="nav">
+      <div class="nav-section">House</div>
+      <button class="nav-item active" data-route="home">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>
+        Home
+      </button>
+      <button class="nav-item" data-route="me">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        My tasks
+        <span class="nav-count">2</span>
+      </button>
+      <button class="nav-item" data-route="people">
+        <svg class="nav-icon" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-1a3 3 0 0 0-3-3"/></svg>
+        People
+      </button>
+      <button class="nav-item" data-route="insights">
+        <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
+        Insights
+      </button>
+
+      <div class="nav-section" style="margin-top: var(--s4);">Soon</div>
+      <button class="nav-item" data-route="settings">
+        <svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        Settings
+      </button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="me-card">
+      <div class="avatar">A</div>
+      <div style="flex:1; min-width:0;">
+        <div class="me-name">Andrew</div>
+        <div class="me-role">Lead of the week</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main>
+
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="viewTitle">Good evening, Andrew.</div>
+        <div class="topbar-sub" id="viewSub">Monday, April 20 · 3 tasks on the board today.</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="theme-switch" role="radiogroup" aria-label="Theme">
+          <button aria-pressed="true" data-theme-btn="dark">Dark</button>
+          <button aria-pressed="false" data-theme-btn="light">Light</button>
+        </div>
+        <button class="icon-btn" aria-label="Notifications">
+          <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- HOME VIEW -->
+    <section class="view active" data-view="home">
+      <div class="bento">
+
+        <!-- house streak -->
+        <div class="tile streak">
+          <div class="tile-label">House streak</div>
+          <div class="tile-value" id="streakNum">28</div>
+          <div class="tile-delta up">↑ personal best · all chores closed on time</div>
+        </div>
+
+        <!-- today tile -->
+        <div class="tile today">
+          <div class="today-head">
+            <div class="today-title">Today</div>
+            <button class="btn btn-ghost" id="addTaskBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add
+            </button>
+          </div>
+          <div class="today-list" id="todayList">
+            <!-- task template filled via JS -->
+          </div>
+        </div>
+
+        <!-- people tile -->
+        <div class="tile people">
+          <div class="tile-label">This week · fairness</div>
+          <div class="people-list" style="margin-top: var(--s3);">
+            <div class="person">
+              <div class="avatar s" style="background: linear-gradient(135deg, oklch(68% 0.16 280), oklch(72% 0.15 320));">S</div>
+              <span class="person-name">Sam</span>
+              <div class="track"><div class="fill" style="width: 48%"></div></div>
+              <span class="person-pct">48%</span>
+            </div>
+            <div class="person">
+              <div class="avatar s" style="background: linear-gradient(135deg, oklch(68% 0.16 180), oklch(72% 0.15 220));">J</div>
+              <span class="person-name">Jordan</span>
+              <div class="track"><div class="fill" style="width: 32%; background: linear-gradient(90deg, oklch(72% 0.16 200), oklch(75% 0.14 220));"></div></div>
+              <span class="person-pct">32%</span>
+            </div>
+            <div class="person">
+              <div class="avatar s" style="background: linear-gradient(135deg, oklch(68% 0.16 40), oklch(72% 0.15 80));">A</div>
+              <span class="person-name">Andrew</span>
+              <div class="track"><div class="fill" style="width: 20%; background: linear-gradient(90deg, oklch(72% 0.14 60), oklch(74% 0.14 75));"></div></div>
+              <span class="person-pct">20%</span>
+            </div>
+          </div>
+          <div style="font: 500 12px Inter; color: var(--text-subtle); margin-top: var(--s4);">No ranks — just shares. Reset every Monday.</div>
+        </div>
+
+        <!-- heatmap tile -->
+        <div class="tile heat">
+          <div class="tile-label">Year in the house</div>
+          <div class="heatmap" id="heatmap"></div>
+          <div class="heatmap-legend">
+            Less
+            <div class="hm"></div>
+            <div class="hm l1"></div>
+            <div class="hm l2"></div>
+            <div class="hm l3"></div>
+            <div class="hm l4"></div>
+            More
+          </div>
+        </div>
+
+        <!-- feed -->
+        <div class="tile feed">
+          <div class="today-head">
+            <div class="today-title">Activity</div>
+            <div style="font: 500 12px Inter; color: var(--text-subtle);">Last 24 hours</div>
+          </div>
+          <div id="feedList" class="feed">
+            <div class="event">
+              <div class="avatar s" style="background: linear-gradient(135deg, oklch(68% 0.16 280), oklch(72% 0.15 320));">S</div>
+              <div class="event-text"><strong>Sam</strong> finished <em>Kitchen deep clean</em></div>
+              <div class="event-reactions">
+                <button class="reaction" data-emoji="🔥">🔥</button>
+                <button class="reaction active" data-emoji="👏">👏</button>
+              </div>
+              <div class="event-time">2h ago</div>
+            </div>
+            <div class="event">
+              <div class="avatar s" style="background: linear-gradient(135deg, oklch(68% 0.16 180), oklch(72% 0.15 220));">J</div>
+              <div class="event-text"><strong>Jordan</strong> took out the <em>Trash</em></div>
+              <div class="event-reactions">
+                <button class="reaction" data-emoji="🙏">🙏</button>
+              </div>
+              <div class="event-time">5h ago</div>
+            </div>
+            <div class="event">
+              <div class="avatar s" style="background: linear-gradient(135deg, oklch(68% 0.16 40), oklch(72% 0.15 80));">A</div>
+              <div class="event-text"><strong>Andrew</strong> paused <em>Vacuum</em> — noted "sick today"</div>
+              <div class="event-reactions">
+                <button class="reaction" data-emoji="💙">💙</button>
+                <button class="reaction active" data-emoji="🤗">🤗</button>
+              </div>
+              <div class="event-time">yesterday</div>
+            </div>
+            <div class="event">
+              <div class="avatar s" style="background: linear-gradient(135deg, oklch(68% 0.16 280), oklch(72% 0.15 320));">S</div>
+              <div class="event-text"><strong>Sam</strong> added a new recurring task: <em>Water plants · weekly</em></div>
+              <div class="event-reactions">
+                <button class="reaction" data-emoji="🌱">🌱</button>
+              </div>
+              <div class="event-time">2d ago</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ME VIEW -->
+    <section class="view" data-view="me">
+      <div class="tile" style="padding: var(--s6);">
+        <div class="today-head" style="margin-bottom: var(--s5);">
+          <div>
+            <div class="today-title">Your queue</div>
+            <div style="font: 500 12px Inter; color: var(--text-subtle); margin-top: 4px;">2 due today · 4 this week</div>
+          </div>
+          <button class="btn btn-primary" onclick="openComposer()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New task
+          </button>
+        </div>
+
+        <div class="today-list" id="myList"></div>
+      </div>
+    </section>
+
+    <!-- PEOPLE VIEW -->
+    <section class="view" data-view="people">
+      <div class="people-grid">
+        <div class="person-card">
+          <div class="person-card-top">
+            <div class="avatar l" style="background: linear-gradient(135deg, oklch(68% 0.16 280), oklch(72% 0.15 320));">S</div>
+            <div>
+              <div class="person-card-name">Sam</div>
+              <div class="person-card-meta">Lead of the week</div>
+            </div>
+          </div>
+          <div class="stat-row"><span class="stat-label">Streak</span><span class="stat-value">28d</span></div>
+          <div class="stat-row"><span class="stat-label">Share this week</span><span class="stat-value" style="color: var(--success)">48%</span></div>
+          <div class="stat-row"><span class="stat-label">On-time rate · 30d</span><span class="stat-value">96%</span></div>
+          <div class="stat-row"><span class="stat-label">Favorite chore</span><span class="stat-value" style="font: 500 13px Inter;">Kitchen</span></div>
+        </div>
+
+        <div class="person-card">
+          <div class="person-card-top">
+            <div class="avatar l" style="background: linear-gradient(135deg, oklch(68% 0.16 180), oklch(72% 0.15 220));">J</div>
+            <div>
+              <div class="person-card-name">Jordan</div>
+              <div class="person-card-meta">Steady</div>
+            </div>
+          </div>
+          <div class="stat-row"><span class="stat-label">Streak</span><span class="stat-value">14d</span></div>
+          <div class="stat-row"><span class="stat-label">Share this week</span><span class="stat-value">32%</span></div>
+          <div class="stat-row"><span class="stat-label">On-time rate · 30d</span><span class="stat-value">88%</span></div>
+          <div class="stat-row"><span class="stat-label">Favorite chore</span><span class="stat-value" style="font: 500 13px Inter;">Trash & recycling</span></div>
+        </div>
+
+        <div class="person-card">
+          <div class="person-card-top">
+            <div class="avatar l" style="background: linear-gradient(135deg, oklch(68% 0.16 40), oklch(72% 0.15 80));">A</div>
+            <div>
+              <div class="person-card-name">Andrew (you)</div>
+              <div class="person-card-meta">Catching up · sick this week</div>
+            </div>
+          </div>
+          <div class="stat-row"><span class="stat-label">Streak</span><span class="stat-value">7d · paused</span></div>
+          <div class="stat-row"><span class="stat-label">Share this week</span><span class="stat-value" style="color: var(--warning)">20%</span></div>
+          <div class="stat-row"><span class="stat-label">On-time rate · 30d</span><span class="stat-value">84%</span></div>
+          <div class="stat-row"><span class="stat-label">Favorite chore</span><span class="stat-value" style="font: 500 13px Inter;">Living room</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSIGHTS VIEW -->
+    <section class="view" data-view="insights">
+      <div class="insights-row">
+        <div class="stat-tile">
+          <div class="tile-label">30-day completion</div>
+          <div class="tile-value">92%</div>
+          <div class="tile-delta up">↑ 6pts vs. last month</div>
+        </div>
+        <div class="stat-tile">
+          <div class="tile-label">Median turnaround</div>
+          <div class="tile-value">4.2h</div>
+          <div class="tile-delta">from assigned → done</div>
+        </div>
+        <div class="stat-tile">
+          <div class="tile-label">Reactions given</div>
+          <div class="tile-value">47</div>
+          <div class="tile-delta up">warm house</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="tile-label">Compliance over time</div>
+        <svg viewBox="0 0 700 200" style="width: 100%; margin-top: var(--s4);" preserveAspectRatio="none" aria-label="Compliance line chart">
+          <defs>
+            <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="oklch(62% 0.19 254)" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="oklch(62% 0.19 254)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0 160 L50 140 L100 150 L150 110 L200 120 L250 95 L300 90 L350 70 L400 80 L450 55 L500 60 L550 45 L600 50 L650 40 L700 35 L700 200 L0 200 Z" fill="url(#grad)"/>
+          <path d="M0 160 L50 140 L100 150 L150 110 L200 120 L250 95 L300 90 L350 70 L400 80 L450 55 L500 60 L550 45 L600 50 L650 40 L700 35" fill="none" stroke="oklch(62% 0.19 254)" stroke-width="2"/>
+        </svg>
+      </div>
+    </section>
+
+    <!-- SETTINGS stub -->
+    <section class="view" data-view="settings">
+      <div class="tile" style="padding: var(--s6); text-align: center;">
+        <div class="tile-label">Settings</div>
+        <p style="color: var(--text-muted); max-width: 480px; margin: var(--s4) auto;">Mode toggle (cooperative / competitive), quiet hours, reminder cadence, and task templates live here. Placeholder for the mockup.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- FAB -->
+<button class="fab" onclick="openComposer()" aria-label="Add task">
+  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+</button>
+
+<!-- COMPOSER -->
+<div class="composer-backdrop" id="backdrop" onclick="closeComposer()"></div>
+<div class="composer" id="composer" role="dialog" aria-modal="true" aria-label="New task">
+  <h3>New task</h3>
+  <input type="text" id="composerInput" placeholder="Try: 'Clean bathroom Friday 7pm weekly'" />
+  <div class="composer-hint" style="margin-top: 6px;">Natural language — we'll parse the schedule.</div>
+  <div class="composer-chips" id="composerChips">
+    <button class="composer-chip active">Any room</button>
+    <button class="composer-chip">Kitchen</button>
+    <button class="composer-chip">Bathroom</button>
+    <button class="composer-chip">Common</button>
+    <button class="composer-chip">Outdoor</button>
+  </div>
+  <div class="composer-actions">
+    <span class="composer-hint">⌘ Enter to save · Esc to close</span>
+    <div style="display:flex; gap: 8px;">
+      <button class="btn btn-ghost" onclick="closeComposer()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask()">Add to house</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"><span class="dot"></span><span id="toastText">Nicely done.</span></div>
+
+<script>
+  // ============ THEME ============
+  document.querySelectorAll('[data-theme-btn]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const theme = btn.dataset.themeBtn;
+      document.documentElement.dataset.theme = theme;
+      document.querySelectorAll('[data-theme-btn]').forEach(b => {
+        b.setAttribute('aria-pressed', b.dataset.themeBtn === theme ? 'true' : 'false');
+      });
+    });
+  });
+
+  // ============ ROUTING ============
+  const viewTitles = {
+    home: { title: 'Good evening, Andrew.', sub: 'Monday, April 20 · 3 tasks on the board today.' },
+    me: { title: 'My tasks', sub: '2 due today, 4 this week. You can skip one, no judgment.' },
+    people: { title: 'People', sub: 'Shares of the work this week — nobody\'s last, nobody\'s first.' },
+    insights: { title: 'Insights', sub: 'Trends across the last 30 days.' },
+    settings: { title: 'Settings', sub: 'Cadence, mode, templates.' }
+  };
+
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const r = btn.dataset.route;
+      if (!r) return;
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.dataset.view === r));
+      const t = viewTitles[r];
+      if (t) { document.getElementById('viewTitle').textContent = t.title; document.getElementById('viewSub').textContent = t.sub; }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // ============ TASKS ============
+  const tasks = [
+    { id: 1, title: 'Take out trash', sub: 'Due by 8pm · recurring weekly', owner: 'Andrew', chip: 'warn', chipLabel: 'Due 8pm', done: false },
+    { id: 2, title: 'Wipe counters', sub: 'Kitchen · quick', owner: 'Sam', chip: null, done: false },
+    { id: 3, title: 'Refill paper towels', sub: 'Common · check before 10pm', owner: 'Andrew', chip: null, done: false },
+    { id: 4, title: 'Bathroom deep clean', sub: 'Friday · 30m', owner: 'Jordan', chip: 'ok', chipLabel: 'On track', done: true }
+  ];
+
+  function renderTasks(containerId, filter = () => true) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = '';
+    tasks.filter(filter).forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'task';
+      row.dataset.done = t.done ? 'true' : 'false';
+      row.innerHTML = `
+        <div class="check" role="checkbox" aria-checked="${t.done}" tabindex="0" data-checked="${t.done}">
+          <svg viewBox="0 0 24 24"><polyline points="5 12 10 17 19 7"></polyline></svg>
+        </div>
+        <div class="task-meta">
+          <div class="task-title">${t.title}</div>
+          <div class="task-sub">${t.sub}</div>
+        </div>
+        <div class="task-assign">
+          ${t.chip ? `<span class="task-chip ${t.chip}">${t.chipLabel}</span>` : ''}
+          <span class="task-chip">${t.owner}</span>
+        </div>
+      `;
+      const check = row.querySelector('.check');
+      const toggle = () => {
+        t.done = !t.done;
+        row.dataset.done = t.done ? 'true' : 'false';
+        check.dataset.checked = t.done ? 'true' : 'false';
+        check.setAttribute('aria-checked', t.done ? 'true' : 'false');
+        if (t.done) {
+          showToast(`Nicely done — ${t.title.toLowerCase()}.`);
+          if (containerId === 'todayList') {
+            const s = document.getElementById('streakNum');
+            if (s) {
+              s.style.transition = 'transform 240ms cubic-bezier(.2,.0,.0,1)';
+              s.style.transform = 'scale(1.08)';
+              setTimeout(() => s.style.transform = '', 260);
+            }
+          }
+        }
+      };
+      check.addEventListener('click', toggle);
+      check.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } });
+      el.appendChild(row);
+    });
+  }
+
+  renderTasks('todayList', t => t.id <= 3);
+  renderTasks('myList', t => t.owner === 'Andrew' || t.id === 4);
+
+  // ============ HEATMAP ============
+  const hm = document.getElementById('heatmap');
+  if (hm) {
+    let s = 47801;
+    const rand = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+    for (let i = 0; i < 26 * 7; i++) {
+      const r = rand();
+      // recent = denser
+      const bias = i / (26 * 7); // 0 → 1
+      const adj = r * 0.7 + bias * 0.3;
+      const level = adj < 0.25 ? '' : adj < 0.5 ? 'l1' : adj < 0.72 ? 'l2' : adj < 0.88 ? 'l3' : 'l4';
+      const cell = document.createElement('div');
+      cell.className = 'hm ' + level;
+      hm.appendChild(cell);
+    }
+  }
+
+  // ============ REACTIONS ============
+  document.querySelectorAll('.reaction').forEach(r => {
+    r.addEventListener('click', () => {
+      r.classList.toggle('active');
+      r.style.transform = 'scale(1.25)';
+      setTimeout(() => r.style.transform = '', 160);
+    });
+  });
+
+  // ============ COMPOSER ============
+  const composer = document.getElementById('composer');
+  const backdrop = document.getElementById('backdrop');
+  const input = document.getElementById('composerInput');
+
+  function openComposer() {
+    composer.classList.add('open');
+    backdrop.classList.add('open');
+    setTimeout(() => input.focus(), 60);
+  }
+  function closeComposer() {
+    composer.classList.remove('open');
+    backdrop.classList.remove('open');
+    input.value = '';
+  }
+  document.getElementById('addTaskBtn')?.addEventListener('click', openComposer);
+  document.querySelectorAll('.composer-chip').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.composer-chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+    });
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeComposer();
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && composer.classList.contains('open')) saveTask();
+  });
+  function saveTask() {
+    const v = input.value.trim();
+    if (!v) { closeComposer(); return; }
+    tasks.unshift({ id: Date.now(), title: v.replace(/(weekly|daily|friday|monday|7pm|8pm|9pm|10pm|quickly)/gi, '').trim(), sub: 'Parsed · added just now', owner: 'Andrew', chip: 'ok', chipLabel: 'New', done: false });
+    renderTasks('todayList', t => t.id <= 3 || t.sub.includes('just now'));
+    renderTasks('myList', t => t.owner === 'Andrew' || t.id === 4);
+    showToast('Task added to the house.');
+    closeComposer();
+  }
+
+  // ============ TOAST ============
+  const toast = document.getElementById('toast');
+  const toastText = document.getElementById('toastText');
+  let toastTimer;
+  function showToast(msg) {
+    toastText.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
+  }
+</script>
+</body>
+</html>
