@@ -97,7 +97,7 @@ export default async function HouseholdPage() {
 
   const myGoals = (myGoalsRaw ?? []) as UserGoal[]
   const myCurrentLogs = (myCurrentLogsRaw ?? []) as DailyLog[]
-  const myHistoryLogs = (myHistoryLogsRaw ?? []) as DailyLog[]
+  const myHistoryLogs = (myHistoryLogsRaw ?? []) as unknown as DailyLog[]
 
   // Per-category scores (0-100)
   const myScores = {
