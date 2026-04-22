@@ -1,36 +1,121 @@
 # Four Fs — Project Progress Log
 
-Live URL: https://function-four.vercel.app  
-Repo: https://github.com/andrewmeyer35/Function_Four  
-Supabase: project configured with RLS policies  
-Last updated: 2026-04-21 (Session 5)
+Live URL: https://function-four.vercel.app
+Repo: https://github.com/andrewmeyer35/Function_Four
+Supabase: project configured with RLS policies
+Last updated: 2026-04-22
+Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
 
-## Index
+## ⚡ PHASE 5 PICKUP — START HERE NEXT SESSION
 
-1. [Project Overview](#1-project-overview)
-2. [Tech Stack](#2-tech-stack)
-3. [Database Schema](#3-database-schema)
-4. [Pages & Routes](#4-pages--routes)
-5. [Components](#5-components)
-6. [Session Log](#6-session-log)
-7. [Known Issues & Fixes](#7-known-issues--fixes)
-8. [Deployment](#8-deployment)
-9. [Next Steps / Ideas](#9-next-steps--ideas)
+### What to build: Suggestions tab + History tab
+
+**Context:** Phases 1–4 fully committed and type-check clean. Branch `claude/jolly-euclid`. `/meals` has 4 tabs; `SuggestionsTab` and `HistoryTab` are still stubs. Phase 5 completes the feature.
+
+### Phase 5 task order
+
+#### 5A — SQL to run in Supabase before testing (if not done)
+```sql
+-- Pantry decrement RPC (needed by Phase 4 confirm route)
+create or replace function decrement_pantry_quantity(
+  p_item_id uuid, p_amount numeric
+) returns void language sql security definer as $$
+  update pantry_items set quantity = greatest(0, quantity - p_amount), updated_at = now()
+  where id = p_item_id;
+$$;
+```
+
+#### 5B — Suggestions Tab
+1. **`GET /api/meal-suggestions`** route:
+   - Fetch `pantry_items` (household-scoped, order by expiration_date asc nulls last, limit 20)
+   - Call Spoonacular `findByIngredients` with top 10 ingredient names: `GET /recipes/findByIngredients?ingredients={csv}&number=10&ranking=2&ignorePantry=true`
+   - Batch fetch recipe info: `GET /recipes/informationBulk?ids={csv}&includeNutrition=false`
+   - Score: `(usedCount / (usedCount + missedCount)) * 0.6 + expiryBonus * 0.4`
+     - `expiryBonus = 1.0` if any used ingredient expires within 3 days, else `0`
+   - Build `MealSuggestion[]` (type in `src/lib/meals/types.ts`), return top 5
+   - Cache result in `recipe_suggestions` table (expires 6 hours)
+   - Graceful fallback: if `SPOONACULAR_API_KEY` absent, return 3 static placeholder suggestions
+
+2. **`SuggestionsTab.tsx`** UI (replace stub at `src/components/meals/SuggestionsTab.tsx`):
+   - On mount: fetch `/api/meal-suggestions`, show loading skeleton (3 card placeholders)
+   - `SuggestionCard` component per result:
+     - Dish name (bold) + cuisine badge + cook time
+     - Pantry match % bar (green gradient, `pantryMatchPercent`)
+     - Key ingredients list (up to 4, comma-separated)
+     - Missing ingredients in amber if any
+     - `whyNow` text (italic, gray)
+     - "Cook this" button → `router.push('/meals?tab=log&dishId={spoonacularId}')`
+   - "Refresh" button top-right to re-fetch
+   - Empty state if pantry is empty: "Add items to your pantry to get meal suggestions"
+   - Error state with retry
+
+#### 5C — LogMealTab pre-fill from Suggestions (small wiring)
+In `src/components/meals/LogMealTab.tsx`, add at the top of the component:
+```tsx
+const searchParams = useSearchParams()
+const router = useRouter()
+const dishIdParam = searchParams.get('dishId')
+useEffect(() => {
+  if (dishIdParam && stage.kind === 'idle') {
+    handleDishSelect({ id: parseInt(dishIdParam), title: '' })
+    // Clear the param so back navigation works cleanly
+    const p = new URLSearchParams(searchParams.toString())
+    p.delete('dishId')
+    router.replace(`/meals?${p.toString()}`)
+  }
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [dishIdParam])
+```
+
+#### 5D — History Tab
+1. **`GET /api/meal-history`** route:
+   - Query `meal_photos` for user/household, `order by created_at desc`, limit 20
+   - Query `recipe_imports` where `status = 'confirmed'`, `order by created_at desc`, limit 20
+   - Merge + sort by date
+   - For each `meal_photos` row, count `consumption_logs` where `meal_photo_id = id`
+   - Return `{ items: [{ id, type: 'photo'|'recipe', title, imageUrl|null, date, ingredientCount }] }`
+
+2. **`HistoryTab.tsx`** UI (replace stub):
+   - Fetch `/api/meal-history` on mount
+   - Date section headers: "Today", "Yesterday", then formatted date strings
+   - `HistoryCard`: thumbnail (or green dish icon), title, date, ingredient count badge
+   - Empty state: "No meals logged yet — photo a meal or import a recipe to get started"
+   - Tap card → expandable inline detail with ingredient list (from `analysis_json` or `recipe_json`)
+
+#### 5E — Commit + PROGRESS.md update
+
+### Key Spoonacular endpoints
+```
+findByIngredients:  GET /recipes/findByIngredients?apiKey=&ingredients={csv}&number=10&ranking=2&ignorePantry=true
+informationBulk:    GET /recipes/informationBulk?apiKey=&ids={csv}&includeNutrition=false
+single info:        GET /recipes/{id}/information?apiKey=&includeNutrition=false
+```
+Response shapes:
+- `findByIngredients`: `[{id, title, usedIngredientCount, missedIngredientCount, missedIngredients[{name,amount,unit}]}]`
+- `informationBulk`: `[{id, title, servings, readyInMinutes, dishTypes[], cuisines[], extendedIngredients[]}]`
+
+### MealSuggestion type (already in src/lib/meals/types.ts)
+```ts
+{ rank, dishName, cuisine, cookTimeMinutes, whyNow, keyIngredients: string[],
+  missingIngredients: [{name, quantity, unit}], pantryMatchPercent: number,
+  difficultyLevel: 'easy'|'medium'|'hard', spoonacularId?: number }
+```
+Derive `difficultyLevel` from `readyInMinutes`: ≤20 = easy, ≤45 = medium, else hard.
+Derive `whyNow`: "Uses your [ingredient] expiring soon" or "Great use of your pantry".
 
 ---
 
 ## 1. Project Overview
 
-Four Fs is a lifestyle accountability web app for households. It tracks four life pillars:
-
+Four Fs is a lifestyle accountability web app for households tracking four life pillars:
 - 💰 **Financial** — saving, avoiding impulse spending, eating at home
 - 💪 **Fitness** — workouts, sleep, nutrition
 - 🎉 **Fun/Friends** — social activity, meaningful connections
 - 💘 **Flirt/Fervier** — dating activity, self care
 
-Users set weekly goals, check off daily progress, and compete on a household leaderboard. Week runs **Saturday → Friday**.
+Week runs **Saturday → Friday**. Users set weekly goals, check off daily progress, compete on household leaderboard.
 
 ---
 
@@ -38,61 +123,131 @@ Users set weekly goals, check off daily progress, and compete on a household lea
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js 14 (App Router), TypeScript, TailwindCSS v3 |
-| Backend | Supabase (PostgreSQL + Auth + RLS) |
+| Frontend | Next.js 14.2.0 (App Router), TypeScript, TailwindCSS v3 |
+| Backend | Supabase (PostgreSQL + Auth + Storage + RLS) |
 | Auth | Supabase magic link (email OTP) |
-| Hosting | Vercel (auto-deploys from GitHub main branch) |
+| AI | Anthropic SDK — `claude-sonnet-4-6` |
+| Recipe data | Spoonacular API |
+| Fuzzy match | Fuse.js v7 |
+| HTML parse | Cheerio v1 |
+| State | Zustand + React Query |
+| Hosting | Vercel (auto-deploys from `main`) |
 | Repo | GitHub — andrewmeyer35/Function_Four |
 
-**Key config files:**
-- `app/frontend/postcss.config.js` — required for Tailwind to compile
-- `app/frontend/next.config.js` — webpack alias for `@shared/*` path
-- `app/frontend/tsconfig.json` — path aliases `@/*` and `@shared/*`
-- `.gitignore` — excludes `.env.local`, `node_modules`, `.next/`
+**CRITICAL: Next.js 14.2.0 NOT 15. App Router. No Prisma — raw Supabase JS client only.**
+
+**Key config:**
+- `app/frontend/postcss.config.js` — required for Tailwind
+- `app/frontend/next.config.js` — webpack `@shared/*` alias
+- `app/frontend/tsconfig.json` — `@/*` and `@shared/*` path aliases
+
+**Environment variables (`.env.local` + Vercel dashboard):**
+```
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+ANTHROPIC_API_KEY          ← Phases 3 & 4 (vision + LLM fallback)
+SPOONACULAR_API_KEY        ← Phases 4 & 5 (dish search + suggestions)
+INSTACART_API_KEY          ← Phase 5 stretch, not blocking
+CRON_SECRET                ← Phase 5 cron jobs
+```
 
 ---
 
 ## 3. Database Schema
 
-### Migration 001 — Initial (users, households, household_members)
+### Migrations 001–004 (pre-meals)
 ```sql
+-- 001
 users (id, email, name, created_at)
 households (id, name, invite_code, created_at)
 household_members (id, user_id, household_id, role, joined_at)
-```
-
-### Migration 002 — Scores and Tags (checkins — legacy)
-```sql
-checkins (id, user_id, household_id, week_start, financial_score, fitness_score,
-          fun_score, flirt_score, financial_tags, fitness_tags, fun_tags, flirt_tags,
-          financial_text, fitness_text, fun_text, flirt_text, created_at)
-```
-
-### Migration 003 — Goals and Daily Logs ⭐ (current system)
-```sql
-user_goals (id, user_id, category, metric_key, label, target, is_active,
-            created_at, updated_at)
+-- 002 legacy
+checkins (id, user_id, household_id, week_start, *_score, *_tags, *_text, created_at)
+-- 003 current system
+user_goals (id, user_id, category, metric_key, label, target, is_active, created_at, updated_at)
   UNIQUE(user_id, metric_key)
-  RLS: USING (true) WITH CHECK (true)
-
-daily_logs (id, user_id, household_id, log_date, week_start,
-            saved_toward_goal, no_impulse_spend, meals_ate_in,
-            worked_out, sleep_7plus, good_nutrition,
-            had_social_activity, quality_connection,
-            dating_activity, self_care,
-            notes, created_at, updated_at)
+daily_logs (id, user_id, household_id, log_date, week_start, saved_toward_goal, no_impulse_spend,
+            meals_ate_in, worked_out, sleep_7plus, good_nutrition, had_social_activity,
+            quality_connection, dating_activity, self_care, notes, created_at, updated_at)
   UNIQUE(user_id, log_date)
-  RLS: USING (true) WITH CHECK (true)
+-- 004
+ALTER TABLE daily_logs ADD COLUMN workout_intensity SMALLINT CHECK (1–7), workout_distance NUMERIC(6,2)
 ```
 
-### Migration 004 — Workout Details
+### Phase 1 Migrations (meals — run manually in Supabase SQL Editor)
 ```sql
-ALTER TABLE daily_logs
-  ADD COLUMN workout_intensity SMALLINT CHECK (workout_intensity BETWEEN 1 AND 7),
-  ADD COLUMN workout_distance  NUMERIC(6,2);
+create table pantry_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  household_id uuid references households,
+  name text not null, aliases text[] default '{}',
+  quantity numeric(10,3) not null default 0, unit text, category text,
+  expiration_date date, auto_reorder boolean default false,
+  created_at timestamptz default now(), updated_at timestamptz default now()
+);
+create table consumption_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null, household_id uuid references households,
+  pantry_item_id uuid references pantry_items, ingredient_name text not null,
+  quantity_consumed numeric(10,3), unit text,
+  source_type text not null,  -- 'meal_photo_estimated'|'confirmed'|'recipe_import'
+  confidence numeric(4,3), meal_photo_id uuid, created_at timestamptz default now()
+);
+create table meal_photos (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null, household_id uuid references households,
+  image_url text not null, dish_name text, dish_confidence numeric(4,3),
+  cuisine text, estimated_servings integer, analysis_json jsonb,
+  created_at timestamptz default now()
+);
+create table recipe_imports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null, household_id uuid references households,
+  source_url text, source_type text not null, source_image_url text,
+  recipe_json jsonb not null, extraction_confidence numeric(4,3),
+  pantry_deductions jsonb default '[]', cart_items jsonb default '[]',
+  status text default 'confirmed', confirmed_at timestamptz, created_at timestamptz default now()
+);
+create table meal_preference_profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null, household_id uuid references households,
+  dietary_restrictions text[] default '{}', allergens text[] default '{}',
+  preferred_cuisines text[] default '{}', disliked_ingredients text[] default '{}',
+  max_cook_time_minutes integer, serving_size integer default 2,
+  inferred_favorites jsonb default '[]', inferred_ingredient_preferences jsonb default '[]',
+  onboarding_completed_at timestamptz, updated_at timestamptz default now()
+);
+create table recipe_suggestions (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households, user_id uuid references auth.users not null,
+  suggestions_json jsonb not null, pantry_snapshot jsonb,
+  generated_at timestamptz default now(),
+  expires_at timestamptz default (now() + interval '6 hours')
+);
+-- RLS (repeat for all 6 tables)
+alter table pantry_items enable row level security;
+create policy "all" on pantry_items for all using (true) with check (true);
 ```
 
-> ⚠️ Migrations must be run manually in Supabase SQL Editor — they are NOT auto-applied.
+**Storage bucket:**
+```
+bucket name: meal-photos (public)
+Policy — run in SQL Editor (UI has a bug with policy builder):
+  create policy "Allow users to manage their own files"
+  on storage.objects for all
+  using (bucket_id = 'meal-photos') with check (bucket_id = 'meal-photos');
+```
+
+**RPC (run if not yet done):**
+```sql
+create or replace function decrement_pantry_quantity(p_item_id uuid, p_amount numeric)
+returns void language sql security definer as $$
+  update pantry_items set quantity = greatest(0, quantity - p_amount), updated_at = now()
+  where id = p_item_id;
+$$;
+```
+
+> ⚠️ All migrations run manually in Supabase SQL Editor — NOT auto-applied.
 
 ---
 
@@ -101,129 +256,94 @@ ALTER TABLE daily_logs
 | Route | Type | Description |
 |-------|------|-------------|
 | `/login` | Public | Magic link login |
-| `/onboarding` | Auth required | Create or join a household. Accepts `?invite=CODE` to pre-fill |
-| `/household` | Auth required | Home page — hero rings, leaderboard, breakdown |
-| `/log` | Auth required | Weekly tracker — daily checkbox grid |
-| `/goals` | Auth required | Goal setter — toggle and configure weekly targets |
-| `/board` | Auth required | Household leaderboard with per-category breakdown |
-| `/profile` | Auth required | User info + invite panel |
-| `/auth/callback` | System | Supabase magic link callback. Accepts `?next=` param |
+| `/onboarding` | Auth | Create or join household (`?invite=CODE`) |
+| `/household` | Auth | Home — hero rings, leaderboard, breakdown |
+| `/log` | Auth | Weekly tracker |
+| `/goals` | Auth | Goal setter |
+| `/board` | Auth | Household leaderboard |
+| `/profile` | Auth | User info + invite panel |
+| `/meals` | Auth | Meals — 4 tabs (suggestions, log, import, history) |
+| `/meals/share` | System | PWA Web Share Target fallback |
+| `/auth/callback` | System | Supabase magic link callback |
 
 ### API Routes
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/goals` | GET | Fetch current user's goals |
-| `/api/goals` | POST | Upsert a single goal `{ metric_key, target, is_active }` |
-| `/api/daily-logs` | GET | Fetch week's logs `?weekStart=YYYY-MM-DD` |
-| `/api/daily-logs` | POST | Upsert one field `{ log_date, metric_key, value }` |
-| `/api/households` | POST | Create a new household |
-| `/api/households/join` | POST | Join via invite code `{ code }` |
+| `/api/goals` | GET/POST | Goals CRUD |
+| `/api/daily-logs` | GET/POST | Daily log CRUD |
+| `/api/households` | POST | Create household |
+| `/api/households/join` | POST | Join via invite code |
+| `/api/recipe-import/from-url` | GET | JSON-LD + LLM recipe extract |
+| `/api/recipe-import/from-image` | POST | Claude vision OCR |
+| `/api/recipe-import/confirm` | POST | Save recipe_imports row |
+| `/api/meal-log/analyze-photo` | POST | Claude vision + Fuse.js match |
+| `/api/meal-log/search-dish` | GET | Spoonacular autocomplete |
+| `/api/meal-log/dish-ingredients` | GET | Spoonacular recipe + pantry match |
+| `/api/meal-log/confirm` | POST | Write DB, decrement pantry |
+| `/api/meal-suggestions` | GET | **Phase 5** Spoonacular + scoring |
+| `/api/meal-history` | GET | **Phase 5** unified history |
 
 ---
 
-## 5. Components
+## 5. Meals Feature File Map
 
-### UI Components (`src/components/ui/`)
+```
+src/
+  lib/meals/
+    types.ts            ← all shared TS types
+    matchPantry.ts      ← Fuse.js matching utility (threshold 0.4)
 
-| Component | Description |
-|-----------|-------------|
-| `LifeScoreHero` | 4 rings (0-100% per category), stats grid, 7-week bar chart |
-| `WeeklyTracker` | Daily checkbox grid per goal. Workout detail panel (intensity 1-7, distance) |
-| `GoalSetter` | Toggle + stepper UI for configuring weekly goals |
-| `HomeBreakdown` | Per-category progress bars on home page |
-| `BoardClient` | Interactive household leaderboard with expandable category breakdown |
-| `InvitePanel` | Phone number input → opens native SMS app with invite link |
-| `Podium` | Compact leaderboard list (used on home page) |
-| `Sidebar` | Desktop fixed sidebar (hidden on mobile) |
-| `BottomNav` | Mobile bottom tab bar (hidden on desktop) |
+  app/
+    (app)/meals/
+      page.tsx          ← server: auth guard + household lookup
+      share/route.ts    ← PWA Web Share Target fallback
+    api/
+      recipe-import/from-url/route.ts    ← JSON-LD → LLM fallback
+      recipe-import/from-image/route.ts  ← Claude vision OCR
+      recipe-import/confirm/route.ts     ← save recipe_imports
+      meal-log/analyze-photo/route.ts    ← vision + parallel pantry + Fuse.js
+      meal-log/search-dish/route.ts      ← Spoonacular autocomplete
+      meal-log/dish-ingredients/route.ts ← Spoonacular info + Fuse.js
+      meal-log/confirm/route.ts          ← DB writes + pantry decrement
 
-### Layout
-- Mobile: bottom nav, single column
-- Desktop (md+): fixed 224px sidebar, 2-column grid on home page
+  components/meals/
+    MealsClient.tsx          ← tab state via URL params
+    MealsTabs.tsx            ← 4-tab pill bar
+    SuggestionsTab.tsx       ← ⚠️ STUB → Phase 5
+    LogMealTab.tsx           ← full (photo/search → confirm → save)
+    ImportRecipeTab.tsx      ← full (URL/screenshot/share → preview → save)
+    HistoryTab.tsx           ← ⚠️ STUB → Phase 5
+    MealPhotoCapture.tsx     ← camera + gallery, preview thumbnail
+    DishSearch.tsx           ← debounced Spoonacular autocomplete
+    ServingsScaler.tsx       ← +/− stepper, rescales deductions
+    IngredientConfirmation.tsx ← toggle + qty editor, color-coded
+    RecipeUrlInput.tsx       ← URL paste + validation
+    RecipeScreenshotUpload.tsx ← drag-drop + file picker
+    ShareLanding.tsx         ← reads from SW Cache API
+    RecipePreview.tsx        ← editable display, confirm/back
+
+public/
+  manifest.json  ← PWA share_target config
+  sw.js          ← intercepts POST /meals/share, caches file, redirects
+```
 
 ---
 
 ## 6. Session Log
 
-### Session 1 — Initial Build
-- Reviewed existing codebase
-- Rebuilt UI to match modern design (rings, stats grid, leaderboard, breakdown cards)
-- Created `postcss.config.js` and `next.config.js` (were missing — caused zero CSS output)
-- Fixed SWC JSX parser bug: bare `>` comparisons misread as JSX closing tags
-- Added responsive layout: mobile bottom nav + desktop sidebar
+### Sessions 1–4 — Core app (pre-2026-04-22)
+Auth, goals, daily logs, leaderboard, workout tracking, invite system, Vercel deployment.
 
-### Session 2 — Goals & Tracking System
-- Created `user_goals` and `daily_logs` tables (migration 003)
-- Built Goals page (`/goals`) with `GoalSetter` component
-- Built Track page (`/log`) with `WeeklyTracker` component
-- Week system: Saturday (day 1) → Friday (day 7) using `date-fns`
-- Optimistic UI for checkbox toggles
-- API routes: `/api/goals` and `/api/daily-logs`
+### Session 5 — Meals Feature Phases 1–4 (2026-04-22)
 
-### Session 3 — Workout Details + Board Page
-- Added `workout_intensity` (1-7) and `workout_distance` columns (migration 004)
-- `WeeklyTracker` now shows collapsible detail panel per workout day
-- Updated API to handle numeric fields (not force Boolean)
-- Built `/board` page with `BoardClient` — ranked leaderboard, expandable per-category scores
+**Phase 1** (`9643510`): PWA manifest + SW, 6 DB table migrations, `types.ts`, `.env.local.example`, Storage bucket setup.
 
-### Session 4 — Bug Fixes & Invite System (2026-04-21)
-- **Fixed goals not saving:** `useTransition` with async doesn't work in React 18 — replaced with plain `useState`. Added `router.refresh()` after save so Track tab shows fresh data
-- **Surfaced real error:** Added proper error message display showing actual API error text
-- **Root cause found:** Migration 003 + 004 had not been run in Supabase → "table not found" error
-- **Built invite system:**
-  - `InvitePanel` component with phone number input + native SMS via `sms:` URI
-  - Web Share API button on supported devices
-  - `/profile` page with household info and invite panel
-  - `OnboardingPage` now passes `?invite=CODE` param → auto-fills join form
-  - Login page carries `?next=` param through magic link so invite code survives auth flow
-- **Updated Home page** to use new `daily_logs`/`user_goals` system:
-  - `LifeScoreHero` now uses 0-100% scores (not old 0-10 checkin scores)
-  - Inline leaderboard shows weekly % per member with progress bars
-  - `HomeBreakdown` replaces old `WeeklyBreakdown` (checkin-based)
-  - 7-week history computed from daily_logs
-  - Streak = consecutive weeks with any logged activity
-- **Deployed to Vercel:**
-  - Repo pushed to GitHub (andrewmeyer35/Function_Four)
-  - Fixed TypeScript build error: `as unknown as DailyLog[]` for partial select
-  - Fixed invalid `ringColor` CSS property in WeeklyTracker
-  - Added Supabase env vars to Vercel project settings
-  - Added live URL to Supabase Auth → URL Configuration + Redirect URLs
+**Phase 2** (`be39eb8`): BottomNav + Sidebar Goals→Meals. `/meals` server page. `MealsClient`, `MealsTabs`, 4 stub tabs.
 
-### Session 5 — Smart Grocery & Pantry App Research (2026-04-21)
+**Phase 3** (`af19ee3`): Recipe import tab fully wired. `from-url` (JSON-LD + Anthropic LLM via cheerio). `from-image` (Claude vision, Storage upload). `confirm` route. PWA share fallback. `RecipeUrlInput`, `RecipeScreenshotUpload`, `ShareLanding`, `RecipePreview`, `ImportRecipeTab` state machine.
 
-Conducted deep 3-workstream research for a new **Smart Grocery & Pantry Management** app concept. Full output available in conversation history. Summary of key findings:
-
-**API Integration (Workstream 1):**
-- Amazon Fresh / Whole Foods: **no public API** — scraping violates TOS
-- **Primary:** Instacart Developer Platform (IDP) — link-based order flow; apply at instacart.com/company/business/developers; sandbox at `connect.dev.instacart.tools`
-- **Secondary:** Kroger Cart API (`developer.kroger.com`) — OAuth2 PKCE, direct `PUT /v1/cart/add`, sandbox at `api-ce.kroger.com`
-- Architecture: Vercel Cron generates list → calls IDP server-side → stores link in DB → user reviews → opens Instacart to checkout
-
-**Pantry Algorithm (Workstream 2):**
-- Full Prisma schema designed: `PantryItem`, `ConsumptionLog`, `MealLog`, `Order`, `OrderLineItem`, `ShelfLifeReference`
-- Ingestion: barcode scan (`@zxing/browser` + Open Food Facts), receipt OCR (Mindee API), manual
-- Consumption tracking: rolling 30-day average (MVP) → LSTM per-category model (Phase 2, min 10 events)
-- Reorder triggers: below threshold, predicted runout within 7 days, expiring within 3 days
-- Shelf life: bundled USDA JSON + Open Food Facts lookup
-- Cron schedule: `0 8 * * *` daily reorder check; `0 7 * * *` expiration alerts
-
-**UX Design (Workstream 3):**
-- PWA (responsive, mobile-first) — single Next.js codebase, no native app for MVP
-- Stack: Next.js 15 + Shadcn/UI + Tailwind + Zustand + React Query + Supabase
-- Key screens designed: Dashboard, Pantry Inventory (expiration color-coding), Barcode Scan, Order Review, Onboarding (5 steps)
-- Competitive gaps exploited: AnyList (no auto-reorder), Pantry Check (overwhelming onboarding), Instacart (no pantry tracking)
-- Notification design: 1 digest/day max, delay push permission until 3+ items logged
-
-**Recommended MVP features (in order):**
-1. Auth (Supabase magic link)
-2. Pantry CRUD + barcode scan
-3. Expiration tracking + alerts (Web Push)
-4. Low stock threshold alerts
-5. Shopping list auto-generation → Instacart link
-6. Receipt OCR import (Mindee)
-
-**Open risks:** Instacart/Kroger TOS require user review step before cart submission (architecture complies); iOS Safari lacks native BarcodeDetector (use `@zxing/browser` polyfill); OFF data quality gaps on expiry data; LSTM cold start for new users.
+**Phase 4** (`6744579`): Log meal tab fully wired. `matchPantry.ts` Fuse.js. `analyze-photo` (vision + parallel pantry). `search-dish` (Spoonacular, graceful degradation). `dish-ingredients` (Spoonacular + Fuse.js). `confirm` (meal_photos, RPC decrement, consumption_logs). `MealPhotoCapture`, `DishSearch`, `ServingsScaler`, `IngredientConfirmation`, `LogMealTab` state machine.
 
 ---
 
@@ -232,184 +352,41 @@ Conducted deep 3-workstream research for a new **Smart Grocery & Pantry Manageme
 | Issue | Cause | Fix |
 |-------|-------|-----|
 | No CSS rendered | Missing `postcss.config.js` | Created the file |
-| `@shared/*` not resolved | Missing `next.config.js` webpack alias | Created the file |
-| SWC parse error on `>` | Bare `>` misread as JSX closing tag | Use `>=` or module-level functions |
-| Goals not saving silently | `useTransition` doesn't track async in React 18 | Replaced with `useState` |
-| Track tab shows stale data | Next.js server cache not invalidated | Added `router.refresh()` after save |
-| Table not found error | Migrations 003/004 not run in Supabase | Run SQL manually in Supabase SQL Editor |
-| Vercel build error (TypeScript) | Partial select type mismatch | Cast via `as unknown as DailyLog[]` |
-| Vercel build error (CSS) | `ringColor` not a valid CSS property | Removed the invalid style |
-| Magic link not arriving | Live URL not added to Supabase auth config | Added to Site URL + Redirect URLs |
+| `@shared/*` not resolved | Missing webpack alias | Created `next.config.js` |
+| SWC parse error on `>` | Bare `>` misread as JSX | Use `>=` |
+| Goals not saving silently | `useTransition` + async React 18 | Replaced with `useState` |
+| Track tab stale data | Server cache not invalidated | Added `router.refresh()` |
+| Table not found | Migrations not run | Run SQL in Supabase SQL Editor |
+| Vercel TS build error | Partial select type | Cast via `as unknown as Type[]` |
+| Vercel CSS build error | `ringColor` not valid CSS | Removed |
+| Magic link not arriving | Live URL missing from Supabase auth | Added to Site URL + Redirect URLs |
+| Supabase Storage RLS UI error | Policy builder bug | Run SQL directly in SQL Editor |
+| TS union error on saving stage | Saving stage missing parent fields | Carry all confirm-stage fields into saving |
 
 ---
 
 ## 8. Deployment
 
-### Vercel
 - **Live URL:** https://function-four.vercel.app
-- **Auto-deploy:** Every push to `main` triggers a new deployment
 - **Root directory:** `app/frontend`
-- **Environment variables required:**
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **Auto-deploy:** push to `main`
+- **Required Vercel env vars:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ANTHROPIC_API_KEY`, `SPOONACULAR_API_KEY`
+- **Supabase Auth:** Site URL + Redirect URL = `https://function-four.vercel.app(/auth/callback)`
 
-### Supabase Auth Configuration
-- **Site URL:** `https://function-four.vercel.app`
-- **Redirect URLs:** `https://function-four.vercel.app/auth/callback`
-
-### Deploying updates
-```cmd
-git add .
-git commit -m "describe what changed"
-git push
+**To deploy meals feature when Phase 5 complete:**
+```bash
+git checkout main && git merge claude/jolly-euclid && git push
 ```
-Vercel picks it up automatically within ~2 minutes.
 
 ---
 
-## 9. Next Steps / Ideas
+## 9. Backlog (non-meals)
 
-- [ ] Push notifications when a roommate logs a workout
+- [ ] Push notifications when roommate logs a workout
 - [ ] Weekly summary email (Sunday recap)
 - [ ] Streak freeze / grace day feature
-- [ ] Historical weekly view — browse past weeks in the Track tab
+- [ ] Historical weekly view — browse past weeks in Track tab
 - [ ] Goal suggestions based on category performance
 - [ ] Dark mode
-- [ ] Custom goal creation (beyond the 10 preset options)
-- [ ] Upgrade Next.js to latest (current 14.2.0 has a flagged security advisory)
-
-### Session 6 — Meal Intelligence Layer Research (2026-04-21)
-
-Conducted deep 3-workstream research for the Meal Intelligence Layer features. Summary:
-
-**Meal Photo Recognition (Workstream 1):**
-- Recommended: Claude Sonnet 4.6 vision for ingredient extraction (~$0.007/photo)
-- Full prompt engineering spec designed; returns structured MealPhotoAnalysis JSON
-- Pantry deduction uses Fuse.js fuzzy matching (threshold 0.4); upgrades to pgvector in Phase 2
-- NEVER auto-deduct — always require user confirmation step
-- Estimated items flagged as `isEstimated: true`; weighted at 0.6x in reorder rolling average
-- New DB model: `MealPhoto` (stores image URL, raw LLM analysis JSONB, match results, user decisions)
-
-**AI Meal Suggestions (Workstream 2):**
-- Primary recipe data: Spoonacular API (`/recipes/findByIngredients`) — $29/mo plan, 365K+ recipes
-- Scoring formula: pantryMatch (45%) + expiryUrgency (35%) + preferenceMatch (20%)
-- LLM for suggestion enrichment: Claude Haiku 4.5 (~$0.004/session) or GPT-4o-mini (~$0.0005/session)
-- Manual entry: Spoonacular autocomplete → ingredient list pre-fill → servings scaler → pantry deduct
-- Preference learning: nightly inference job (dish frequency + ingredient frequency from ConsumptionLog)
-- New DB models: `MealPreferenceProfile`, `RecipeSuggestion`
-
-**Social Recipe Import (Workstream 3):**
-- Instagram Basic Display API: DEAD (shutdown late 2024). Instagram Graph API: own account only, stories inaccessible to third parties. Do NOT build around Instagram API.
-- MVP Path A: URL paste/share → JSON-LD extraction (zero LLM cost, 631 sites) → LLM fallback
-- MVP Path B: Screenshot upload → Google Cloud Vision OCR → Claude Haiku recipe parse
-- Phase 2: TikTok transcript via Supadata API → Claude recipe parse
-- Recipe → Cart: match ingredients to pantry (deduct what you have) → generate Instacart link for missing items only
-- New DB model: `RecipeImport`
-
-**Cost at 10K DAU:** ~$130/day / ~$4K/month (reducible by switching suggestions to GPT-4o-mini)
-
-**Key legal notes:** Never scrape Instagram/TikTok automatically. All import flows must be user-initiated. Ingredient lists are not copyrightable (US law); recipe steps are — extract ingredients only.
-
-**New API routes needed:**
-- POST /api/meal-photo/upload → /analyze → /confirm
-- GET /api/meal-suggestions
-- POST /api/recipe-import/from-url → /from-image → /confirm
-- GET|PUT /api/preferences
-
-### Smart Pantry App (new project concept — research complete 2026-04-21)
-- [ ] Apply for Instacart Developer Platform API key
-- [ ] Register app at developer.kroger.com (sandbox available immediately)
-- [ ] Initialize new Next.js 15 repo with Supabase + Prisma + Shadcn/UI
-- [ ] Implement Prisma schema (PantryItem, ConsumptionLog, Order, etc.)
-- [ ] Build barcode scan flow (@zxing/browser + Open Food Facts)
-- [ ] Build receipt OCR flow (Mindee API)
-- [ ] Build Instacart IDP link-generation server action
-- [ ] Set up Vercel Cron jobs for daily reorder + expiration checks
-- [ ] Configure Web Push (VAPID) notifications
-
-### Session 7 — Meals Feature Technical Spec (2026-04-21)
-
-Produced full technical spec for PWA Web Share Target API + /meals page architecture. Spec saved to `brainstorming/technical/meals-feature-spec.md`.
-
-**Part 1 — Web Share Target API:**
-- Full browser support matrix: Android Chrome YES, iOS Safari NO (WebKit bug open since 2019, no ETA)
-- manifest.json `share_target` config: POST + multipart/form-data, accepts image/* files + url + text + title params
-- Service worker intercept pattern: SW catches POST to /meals/share, stores file in Cache API, redirects to /meals?tab=import&shareId=...
-- Next.js route handler at `src/app/(app)/meals/share/route.ts`: server-side fallback that uploads images to Supabase Storage
-- ShareLanding component: reads shareId from Cache API or sharedImageUrl/sharedUrl from query params
-- InstallPrompt component: captures `beforeinstallprompt` event, shows banner on Meals page
-- End-to-end UX flows documented for both image share (Flow A) and URL share (Flow B)
-- iOS fallback: URL paste input + file picker (no install required)
-
-**Part 2 — /meals Page Architecture:**
-- Navigation: Replace "Goals" in bottom nav with "Meals" (center slot). Goals stays in sidebar + add link in Profile page for mobile.
-- Nav icon: Chef hat SVG (no Lucide dep, matches existing custom SVG pattern)
-- 4-tab structure: Suggestions (default) | Log Meal | Import Recipe | History
-- Tab state in URL params — enables share target deep links (?tab=import&shareId=...)
-- All 4 tabs fully wireframed with screen-by-screen descriptions
-- Shared IngredientConfirmation screen: confidence-based pre-checking (green >0.8, amber 0.4–0.8, grey <0.4)
-- 21 new components listed with file paths
-- 6 new API routes listed
-- Complete file tree additions documented
-
-**Key implementation notes:**
-- App is Next.js 14.2.0 (not 15) — all code written for Next.js 14 App Router
-- Shadcn/UI not yet installed — recommend adding for Sheet + Dialog components
-- Service worker must live at `public/sw.js`, registered in `providers.tsx`
-- `meal-photos` Supabase Storage bucket needed for server-side image uploads
-
-### Meal Intelligence Layer (research complete 2026-04-21)
-- [ ] Add `MealPhoto`, `RecipeImport`, `MealPreferenceProfile`, `RecipeSuggestion` Prisma models
-- [ ] Add `ConsumptionLog` with `source`, `isEstimated`, `dishContext`, `mealPhotoId`, `recipeImportId` fields
-- [ ] Build meal photo upload → Claude Sonnet 4.6 vision → ingredient extraction pipeline
-- [ ] Build Fuse.js pantry matcher (threshold 0.3–0.4; aliases field on PantryItem)
-- [ ] Build user confirmation UI for pantry deductions (pre-check high-confidence, amber for low)
-- [ ] Integrate Spoonacular API (recipe search, findByIngredients, autocomplete)
-- [ ] Build pantry-aware meal suggestion scoring (pantryMatch 45% + expiryUrgency 35% + preference 20%)
-- [ ] Build Claude Haiku meal suggestion LLM call (or GPT-4o-mini for cost)
-- [ ] Build manual meal entry with Spoonacular autocomplete + servings scaler
-- [ ] Build URL → JSON-LD recipe extraction (cheerio + schema.org/Recipe parser)
-- [ ] Build LLM fallback recipe extraction for non-structured pages (Claude Haiku)
-- [ ] Build screenshot OCR pipeline (Google Cloud Vision → Claude recipe parse)
-- [ ] Build Recipe → Cart flow (pantry match deductions + Instacart link for missing items)
-- [ ] Build nightly preference inference job (dish/ingredient frequency from ConsumptionLog)
-- [ ] Add `meal-photos` Supabase Storage bucket with RLS
-
-### /meals Page Implementation (spec complete 2026-04-21)
-- [ ] Install Shadcn/UI (`npx shadcn-ui@latest init`) — needed for Sheet, Dialog
-- [x] Create `public/manifest.json` with share_target config
-- [x] Create `public/sw.js` service worker with share target intercept
-- [ ] Create `public/icons/icon-192.png` and `icon-512.png` (PWA required — user must supply PNG files)
-- [x] Add `<link rel="manifest">` and PWA meta tags to `src/app/layout.tsx`
-- [x] Register service worker in `src/app/providers.tsx`
-- [ ] Create `src/app/(app)/meals/page.tsx` server component
-- [ ] Create `src/app/(app)/meals/share/route.ts` share target POST handler
-- [ ] Build all 19 meal components in `src/components/meals/`
-- [ ] Build `src/components/ui/InstallPrompt.tsx`
-- [ ] Update `BottomNav.tsx`: replace Goals with Meals (center slot)
-- [ ] Update `Sidebar.tsx`: add Meals entry
-- [ ] Add Goals link to Profile page (so mobile users can still reach it)
-- [ ] Create `meal-photos` Supabase Storage bucket + RLS policy  ← user does this in Supabase dashboard
-- [ ] Build 6 new API routes under `src/app/api/`
-
-### Phase 1 completed (2026-04-21)
-Code changes done:
-- [x] Installed: `@anthropic-ai/sdk`, `fuse.js`, `cheerio`, `@types/cheerio`
-- [x] Created `public/manifest.json` (PWA manifest + share_target)
-- [x] Created `public/sw.js` (service worker — share intercept + cache cleanup)
-- [x] Created `public/icons/` directory (user must add icon-192.png + icon-512.png)
-- [x] Updated `src/app/layout.tsx` — manifest link + PWA meta tags
-- [x] Updated `src/app/providers.tsx` — SW registration on mount
-- [x] Created `src/lib/meals/types.ts` — all shared TypeScript types
-- [x] Created `.env.local.example` — documents all required env vars
-- TypeScript check: clean (0 errors)
-
-User still needs to do manually:
-- [ ] Apply for Instacart IDP key (instacart.com/company/business/developers)
-- [x] Sign up for Spoonacular — key in .env.local
-- [x] Anthropic API key — key in .env.local
-- [x] Copy `.env.local.example` → `.env.local` and fill in keys
-- [ ] Add ANTHROPIC_API_KEY + SPOONACULAR_API_KEY to Vercel environment variables
-- [x] Run 6 SQL migrations in Supabase SQL editor
-- [x] Create `meal-photos` Storage bucket + RLS policy in Supabase
-- [ ] Add `public/icons/icon-192.png` and `icon-512.png` (app logo PNGs)
+- [ ] Custom goal creation (beyond 10 preset options)
+- [ ] Upgrade Next.js from 14.2.0 (flagged security advisory)
