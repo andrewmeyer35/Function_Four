@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app  
 Repo: https://github.com/andrewmeyer35/Function_Four  
 Supabase: project configured with RLS policies  
-Last updated: 2026-04-21
+Last updated: 2026-04-21 (Session 5)
 
 ---
 
@@ -190,6 +190,41 @@ ALTER TABLE daily_logs
   - Added Supabase env vars to Vercel project settings
   - Added live URL to Supabase Auth → URL Configuration + Redirect URLs
 
+### Session 5 — Smart Grocery & Pantry App Research (2026-04-21)
+
+Conducted deep 3-workstream research for a new **Smart Grocery & Pantry Management** app concept. Full output available in conversation history. Summary of key findings:
+
+**API Integration (Workstream 1):**
+- Amazon Fresh / Whole Foods: **no public API** — scraping violates TOS
+- **Primary:** Instacart Developer Platform (IDP) — link-based order flow; apply at instacart.com/company/business/developers; sandbox at `connect.dev.instacart.tools`
+- **Secondary:** Kroger Cart API (`developer.kroger.com`) — OAuth2 PKCE, direct `PUT /v1/cart/add`, sandbox at `api-ce.kroger.com`
+- Architecture: Vercel Cron generates list → calls IDP server-side → stores link in DB → user reviews → opens Instacart to checkout
+
+**Pantry Algorithm (Workstream 2):**
+- Full Prisma schema designed: `PantryItem`, `ConsumptionLog`, `MealLog`, `Order`, `OrderLineItem`, `ShelfLifeReference`
+- Ingestion: barcode scan (`@zxing/browser` + Open Food Facts), receipt OCR (Mindee API), manual
+- Consumption tracking: rolling 30-day average (MVP) → LSTM per-category model (Phase 2, min 10 events)
+- Reorder triggers: below threshold, predicted runout within 7 days, expiring within 3 days
+- Shelf life: bundled USDA JSON + Open Food Facts lookup
+- Cron schedule: `0 8 * * *` daily reorder check; `0 7 * * *` expiration alerts
+
+**UX Design (Workstream 3):**
+- PWA (responsive, mobile-first) — single Next.js codebase, no native app for MVP
+- Stack: Next.js 15 + Shadcn/UI + Tailwind + Zustand + React Query + Supabase
+- Key screens designed: Dashboard, Pantry Inventory (expiration color-coding), Barcode Scan, Order Review, Onboarding (5 steps)
+- Competitive gaps exploited: AnyList (no auto-reorder), Pantry Check (overwhelming onboarding), Instacart (no pantry tracking)
+- Notification design: 1 digest/day max, delay push permission until 3+ items logged
+
+**Recommended MVP features (in order):**
+1. Auth (Supabase magic link)
+2. Pantry CRUD + barcode scan
+3. Expiration tracking + alerts (Web Push)
+4. Low stock threshold alerts
+5. Shopping list auto-generation → Instacart link
+6. Receipt OCR import (Mindee)
+
+**Open risks:** Instacart/Kroger TOS require user review step before cart submission (architecture complies); iOS Safari lacks native BarcodeDetector (use `@zxing/browser` polyfill); OFF data quality gaps on expiry data; LSTM cold start for new users.
+
 ---
 
 ## 7. Known Issues & Fixes
@@ -242,3 +277,139 @@ Vercel picks it up automatically within ~2 minutes.
 - [ ] Dark mode
 - [ ] Custom goal creation (beyond the 10 preset options)
 - [ ] Upgrade Next.js to latest (current 14.2.0 has a flagged security advisory)
+
+### Session 6 — Meal Intelligence Layer Research (2026-04-21)
+
+Conducted deep 3-workstream research for the Meal Intelligence Layer features. Summary:
+
+**Meal Photo Recognition (Workstream 1):**
+- Recommended: Claude Sonnet 4.6 vision for ingredient extraction (~$0.007/photo)
+- Full prompt engineering spec designed; returns structured MealPhotoAnalysis JSON
+- Pantry deduction uses Fuse.js fuzzy matching (threshold 0.4); upgrades to pgvector in Phase 2
+- NEVER auto-deduct — always require user confirmation step
+- Estimated items flagged as `isEstimated: true`; weighted at 0.6x in reorder rolling average
+- New DB model: `MealPhoto` (stores image URL, raw LLM analysis JSONB, match results, user decisions)
+
+**AI Meal Suggestions (Workstream 2):**
+- Primary recipe data: Spoonacular API (`/recipes/findByIngredients`) — $29/mo plan, 365K+ recipes
+- Scoring formula: pantryMatch (45%) + expiryUrgency (35%) + preferenceMatch (20%)
+- LLM for suggestion enrichment: Claude Haiku 4.5 (~$0.004/session) or GPT-4o-mini (~$0.0005/session)
+- Manual entry: Spoonacular autocomplete → ingredient list pre-fill → servings scaler → pantry deduct
+- Preference learning: nightly inference job (dish frequency + ingredient frequency from ConsumptionLog)
+- New DB models: `MealPreferenceProfile`, `RecipeSuggestion`
+
+**Social Recipe Import (Workstream 3):**
+- Instagram Basic Display API: DEAD (shutdown late 2024). Instagram Graph API: own account only, stories inaccessible to third parties. Do NOT build around Instagram API.
+- MVP Path A: URL paste/share → JSON-LD extraction (zero LLM cost, 631 sites) → LLM fallback
+- MVP Path B: Screenshot upload → Google Cloud Vision OCR → Claude Haiku recipe parse
+- Phase 2: TikTok transcript via Supadata API → Claude recipe parse
+- Recipe → Cart: match ingredients to pantry (deduct what you have) → generate Instacart link for missing items only
+- New DB model: `RecipeImport`
+
+**Cost at 10K DAU:** ~$130/day / ~$4K/month (reducible by switching suggestions to GPT-4o-mini)
+
+**Key legal notes:** Never scrape Instagram/TikTok automatically. All import flows must be user-initiated. Ingredient lists are not copyrightable (US law); recipe steps are — extract ingredients only.
+
+**New API routes needed:**
+- POST /api/meal-photo/upload → /analyze → /confirm
+- GET /api/meal-suggestions
+- POST /api/recipe-import/from-url → /from-image → /confirm
+- GET|PUT /api/preferences
+
+### Smart Pantry App (new project concept — research complete 2026-04-21)
+- [ ] Apply for Instacart Developer Platform API key
+- [ ] Register app at developer.kroger.com (sandbox available immediately)
+- [ ] Initialize new Next.js 15 repo with Supabase + Prisma + Shadcn/UI
+- [ ] Implement Prisma schema (PantryItem, ConsumptionLog, Order, etc.)
+- [ ] Build barcode scan flow (@zxing/browser + Open Food Facts)
+- [ ] Build receipt OCR flow (Mindee API)
+- [ ] Build Instacart IDP link-generation server action
+- [ ] Set up Vercel Cron jobs for daily reorder + expiration checks
+- [ ] Configure Web Push (VAPID) notifications
+
+### Session 7 — Meals Feature Technical Spec (2026-04-21)
+
+Produced full technical spec for PWA Web Share Target API + /meals page architecture. Spec saved to `brainstorming/technical/meals-feature-spec.md`.
+
+**Part 1 — Web Share Target API:**
+- Full browser support matrix: Android Chrome YES, iOS Safari NO (WebKit bug open since 2019, no ETA)
+- manifest.json `share_target` config: POST + multipart/form-data, accepts image/* files + url + text + title params
+- Service worker intercept pattern: SW catches POST to /meals/share, stores file in Cache API, redirects to /meals?tab=import&shareId=...
+- Next.js route handler at `src/app/(app)/meals/share/route.ts`: server-side fallback that uploads images to Supabase Storage
+- ShareLanding component: reads shareId from Cache API or sharedImageUrl/sharedUrl from query params
+- InstallPrompt component: captures `beforeinstallprompt` event, shows banner on Meals page
+- End-to-end UX flows documented for both image share (Flow A) and URL share (Flow B)
+- iOS fallback: URL paste input + file picker (no install required)
+
+**Part 2 — /meals Page Architecture:**
+- Navigation: Replace "Goals" in bottom nav with "Meals" (center slot). Goals stays in sidebar + add link in Profile page for mobile.
+- Nav icon: Chef hat SVG (no Lucide dep, matches existing custom SVG pattern)
+- 4-tab structure: Suggestions (default) | Log Meal | Import Recipe | History
+- Tab state in URL params — enables share target deep links (?tab=import&shareId=...)
+- All 4 tabs fully wireframed with screen-by-screen descriptions
+- Shared IngredientConfirmation screen: confidence-based pre-checking (green >0.8, amber 0.4–0.8, grey <0.4)
+- 21 new components listed with file paths
+- 6 new API routes listed
+- Complete file tree additions documented
+
+**Key implementation notes:**
+- App is Next.js 14.2.0 (not 15) — all code written for Next.js 14 App Router
+- Shadcn/UI not yet installed — recommend adding for Sheet + Dialog components
+- Service worker must live at `public/sw.js`, registered in `providers.tsx`
+- `meal-photos` Supabase Storage bucket needed for server-side image uploads
+
+### Meal Intelligence Layer (research complete 2026-04-21)
+- [ ] Add `MealPhoto`, `RecipeImport`, `MealPreferenceProfile`, `RecipeSuggestion` Prisma models
+- [ ] Add `ConsumptionLog` with `source`, `isEstimated`, `dishContext`, `mealPhotoId`, `recipeImportId` fields
+- [ ] Build meal photo upload → Claude Sonnet 4.6 vision → ingredient extraction pipeline
+- [ ] Build Fuse.js pantry matcher (threshold 0.3–0.4; aliases field on PantryItem)
+- [ ] Build user confirmation UI for pantry deductions (pre-check high-confidence, amber for low)
+- [ ] Integrate Spoonacular API (recipe search, findByIngredients, autocomplete)
+- [ ] Build pantry-aware meal suggestion scoring (pantryMatch 45% + expiryUrgency 35% + preference 20%)
+- [ ] Build Claude Haiku meal suggestion LLM call (or GPT-4o-mini for cost)
+- [ ] Build manual meal entry with Spoonacular autocomplete + servings scaler
+- [ ] Build URL → JSON-LD recipe extraction (cheerio + schema.org/Recipe parser)
+- [ ] Build LLM fallback recipe extraction for non-structured pages (Claude Haiku)
+- [ ] Build screenshot OCR pipeline (Google Cloud Vision → Claude recipe parse)
+- [ ] Build Recipe → Cart flow (pantry match deductions + Instacart link for missing items)
+- [ ] Build nightly preference inference job (dish/ingredient frequency from ConsumptionLog)
+- [ ] Add `meal-photos` Supabase Storage bucket with RLS
+
+### /meals Page Implementation (spec complete 2026-04-21)
+- [ ] Install Shadcn/UI (`npx shadcn-ui@latest init`) — needed for Sheet, Dialog
+- [x] Create `public/manifest.json` with share_target config
+- [x] Create `public/sw.js` service worker with share target intercept
+- [ ] Create `public/icons/icon-192.png` and `icon-512.png` (PWA required — user must supply PNG files)
+- [x] Add `<link rel="manifest">` and PWA meta tags to `src/app/layout.tsx`
+- [x] Register service worker in `src/app/providers.tsx`
+- [ ] Create `src/app/(app)/meals/page.tsx` server component
+- [ ] Create `src/app/(app)/meals/share/route.ts` share target POST handler
+- [ ] Build all 19 meal components in `src/components/meals/`
+- [ ] Build `src/components/ui/InstallPrompt.tsx`
+- [ ] Update `BottomNav.tsx`: replace Goals with Meals (center slot)
+- [ ] Update `Sidebar.tsx`: add Meals entry
+- [ ] Add Goals link to Profile page (so mobile users can still reach it)
+- [ ] Create `meal-photos` Supabase Storage bucket + RLS policy  ← user does this in Supabase dashboard
+- [ ] Build 6 new API routes under `src/app/api/`
+
+### Phase 1 completed (2026-04-21)
+Code changes done:
+- [x] Installed: `@anthropic-ai/sdk`, `fuse.js`, `cheerio`, `@types/cheerio`
+- [x] Created `public/manifest.json` (PWA manifest + share_target)
+- [x] Created `public/sw.js` (service worker — share intercept + cache cleanup)
+- [x] Created `public/icons/` directory (user must add icon-192.png + icon-512.png)
+- [x] Updated `src/app/layout.tsx` — manifest link + PWA meta tags
+- [x] Updated `src/app/providers.tsx` — SW registration on mount
+- [x] Created `src/lib/meals/types.ts` — all shared TypeScript types
+- [x] Created `.env.local.example` — documents all required env vars
+- TypeScript check: clean (0 errors)
+
+User still needs to do manually:
+- [ ] Apply for Instacart IDP key (instacart.com/company/business/developers)
+- [x] Sign up for Spoonacular — key in .env.local
+- [x] Anthropic API key — key in .env.local
+- [x] Copy `.env.local.example` → `.env.local` and fill in keys
+- [ ] Add ANTHROPIC_API_KEY + SPOONACULAR_API_KEY to Vercel environment variables
+- [x] Run 6 SQL migrations in Supabase SQL editor
+- [x] Create `meal-photos` Storage bucket + RLS policy in Supabase
+- [ ] Add `public/icons/icon-192.png` and `icon-512.png` (app logo PNGs)
