@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr:*)",
+      "WebSearch",
+      "WebFetch(domain:developer.kroger.com)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\(Object.keys\\(p.dependencies\\)\\)\\)\")",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}
