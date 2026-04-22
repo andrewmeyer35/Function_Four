@@ -37,6 +37,16 @@ const NAV = [
     ),
   },
   {
+    label: 'Meals',
+    href: '/meals',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 13.87A4 4 0 017.41 6a5.11 5.11 0 019.18 0 4 4 0 011.41 7.87V20H6z" />
+        <line x1="6" y1="17" x2="18" y2="17" />
+      </svg>
+    ),
+  },
+  {
     label: 'Board',
     href: '/board',
     icon: (
