@@ -166,7 +166,9 @@ export function MealPlanTab({ userId: _userId, householdId: _householdId }: Prop
         <ShoppingList
           shoppingItems={shoppingItems}
           lowStockItems={lowStockItems}
+          weekStart={weekStart}
           loading={listLoading}
+          onBought={loadShoppingList}
         />
       </div>
 
