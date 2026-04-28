@@ -3,14 +3,34 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-04-22
+Last updated: 2026-04-27
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
 
-## ⚡ PHASE 5 PICKUP — START HERE NEXT SESSION
+## ⚡ PHASE 6 COMPLETE — START HERE NEXT SESSION
 
-### What to build: Suggestions tab + History tab
+### What was built: Shopping cart feature (Phase 6)
+
+**Commits:** `87f57f7` (cart feature) + `1463b7c` (migration 009)
+
+**Files added/modified:**
+- `app/backend/migrations/009_cart_items.sql` — run in Supabase SQL Editor before testing
+- `app/frontend/src/app/api/cart/route.ts` — GET/POST custom cart items
+- `app/frontend/src/app/api/cart/[id]/route.ts` — PATCH/DELETE individual items
+- `app/frontend/src/app/api/cart/instacart/route.ts` — Instacart Connect link or clipboard fallback
+- `app/frontend/src/components/meals/ShoppingList.tsx` — full rewrite with cart UX
+- `app/frontend/src/components/meals/MealPlanTab.tsx` — passes weekStart to ShoppingList
+
+**User must run in Supabase SQL Editor before testing:**
+```sql
+-- from app/backend/migrations/009_cart_items.sql
+CREATE TABLE IF NOT EXISTS cart_items (...);
+ALTER PUBLICATION supabase_realtime ADD TABLE cart_items;
+NOTIFY pgrst, 'reload schema';
+```
+
+### What to build next: Suggestions tab + History tab
 
 **Context:** Phases 1–4 fully committed and type-check clean. Branch `claude/jolly-euclid`. `/meals` has 4 tabs; `SuggestionsTab` and `HistoryTab` are still stubs. Phase 5 completes the feature.
 
@@ -344,6 +364,10 @@ Auth, goals, daily logs, leaderboard, workout tracking, invite system, Vercel de
 **Phase 3** (`af19ee3`): Recipe import tab fully wired. `from-url` (JSON-LD + Anthropic LLM via cheerio). `from-image` (Claude vision, Storage upload). `confirm` route. PWA share fallback. `RecipeUrlInput`, `RecipeScreenshotUpload`, `ShareLanding`, `RecipePreview`, `ImportRecipeTab` state machine.
 
 **Phase 4** (`6744579`): Log meal tab fully wired. `matchPantry.ts` Fuse.js. `analyze-photo` (vision + parallel pantry). `search-dish` (Spoonacular, graceful degradation). `dish-ingredients` (Spoonacular + Fuse.js). `confirm` (meal_photos, RPC decrement, consumption_logs). `MealPhotoCapture`, `DishSearch`, `ServingsScaler`, `IngredientConfirmation`, `LogMealTab` state machine.
+
+### Session 10 — Shopping Cart Phase 6 (2026-04-27)
+
+**Phase 6** (`87f57f7` + `1463b7c`): Persistent shopping cart with real-time household sync. `cart_items` DB table (migration 009) with RLS + Supabase Realtime publication. Three new API routes: GET/POST `/api/cart`, PATCH/DELETE `/api/cart/[id]`, GET `/api/cart/instacart` (Instacart Connect link with clipboard fallback). `ShoppingList.tsx` full rewrite: add-item form, per-section custom items (indigo border), Supabase Realtime subscription filtered by household_id/user_id, 5s undo toast after check-off, collapsible "In your cart ✓" zone, Instacart + copy-list header buttons, `mountedRef` guards, `res.ok` checks throughout. `MealPlanTab.tsx` updated to pass `weekStart` prop.
 
 ---
 
