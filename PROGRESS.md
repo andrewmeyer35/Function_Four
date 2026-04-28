@@ -8,6 +8,42 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 
 ---
 
+## ⚡ START HERE — read this first, then say "continue"
+
+**Branch:** `claude/jolly-euclid` · **Worktree:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`
+
+### What is done (all committed + pushed)
+- Migration 009: `cart_items` table — **user still needs to run this in Supabase SQL Editor** (file: `app/backend/migrations/009_cart_items.sql`)
+- `GET/POST /api/cart`, `PATCH/DELETE /api/cart/[id]`, `GET /api/cart/instacart` — all built, auth-checked, type-clean
+- `ShoppingList.tsx` — full rewrite: add-item form, per-section custom items, Realtime sync, 5s undo toast, Instacart button, collapsible bought zone
+- All peer-review fixes applied; `tsc --noEmit` clean
+
+### What is broken / not yet done
+1. **`MealPlanTab.tsx` does not forward `userId`/`householdId` to `ShoppingList`** — they are received as `_userId`/`_householdId` (unused). The Realtime subscription filter will be `undefined` until this is fixed. Fix: remove the `_` prefix and add `userId={userId} householdId={householdId}` to the `<ShoppingList>` call. File: `app/frontend/src/components/meals/MealPlanTab.tsx`
+2. **Migration 009 not yet run in Supabase** — `cart_items` table does not exist in production until user runs the SQL.
+3. **SuggestionsTab** — still a stub (planned Day 2)
+4. **HistoryTab** — still a stub (planned Day 3)
+
+### Day-by-day plan (2026-04-29 through 2026-05-02)
+| Day | Goal | Scope |
+|-----|------|-------|
+| **Day 1 — Apr 29** | Shopping cart visible + working in UI | Fix MealPlanTab prop forwarding, user runs migration 009, smoke-test full cart flow, commit + push |
+| **Day 2 — Apr 30** | Suggestions tab live | `GET /api/meal-suggestions` (Spoonacular + Claude scoring + 6h cache) + `SuggestionsTab.tsx` + peer review + commit |
+| **Day 3 — May 1** | History tab + LogMealTab pre-fill | `GET /api/meal-history` + `HistoryTab.tsx` + `?dishId=` wiring into LogMealTab + peer review + commit |
+| **Day 4 — May 2** | Merge to main + deploy | Final auth audit, merge `claude/jolly-euclid` → `main`, add Vercel env vars, verify live URL |
+
+### Day 1 exact steps (do these in order)
+1. In `app/frontend/src/components/meals/MealPlanTab.tsx`:
+   - Change `{ userId: _userId, householdId: _householdId }` → `{ userId, householdId }`
+   - Add `userId={userId} householdId={householdId}` props to the `<ShoppingList>` call
+2. Run `npx tsc --noEmit` in `app/frontend/` — should be 0 errors
+3. Commit: `git add app/frontend/src/components/meals/MealPlanTab.tsx && git commit -m "Fix: forward userId + householdId to ShoppingList for Realtime filter"`
+4. Push: `git push origin claude/jolly-euclid`
+5. User: run `app/backend/migrations/009_cart_items.sql` in Supabase SQL Editor, then `NOTIFY pgrst, 'reload schema';`
+6. Open `/meals?tab=plan` and verify: add item, check off, undo toast appears for 5s, Instacart button copies to clipboard
+
+---
+
 ## Index
 
 1. [Project Overview](#1-project-overview)
@@ -23,29 +59,15 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 
 ---
 
-## ⚡ PHASE 6 COMPLETE — START HERE NEXT SESSION
+## Phase 6 — Shopping cart (committed 2026-04-28)
 
-### What was built: Shopping cart feature (Phase 6)
+**Commits:** `87f57f7` + `1463b7c` + `369ae3a` + `f7bb907`
 
-**Commits:** `87f57f7` (cart feature) + `1463b7c` (migration 009)
+**Files changed:** migration 009, `/api/cart`, `/api/cart/[id]`, `/api/cart/instacart`, `ShoppingList.tsx`, `MealPlanTab.tsx`, `PROGRESS.md`
 
-**Files added/modified:**
-- `app/backend/migrations/009_cart_items.sql` — run in Supabase SQL Editor before testing
-- `app/frontend/src/app/api/cart/route.ts` — GET/POST custom cart items
-- `app/frontend/src/app/api/cart/[id]/route.ts` — PATCH/DELETE individual items
-- `app/frontend/src/app/api/cart/instacart/route.ts` — Instacart Connect link or clipboard fallback
-- `app/frontend/src/components/meals/ShoppingList.tsx` — full rewrite with cart UX
-- `app/frontend/src/components/meals/MealPlanTab.tsx` — passes weekStart to ShoppingList
+**Known gap (fix Day 1):** `MealPlanTab` does not yet forward `userId`/`householdId` to `ShoppingList` — Realtime filter will be `undefined` until patched.
 
-**User must run in Supabase SQL Editor before testing:**
-```sql
--- from app/backend/migrations/009_cart_items.sql
-CREATE TABLE IF NOT EXISTS cart_items (...);
-ALTER PUBLICATION supabase_realtime ADD TABLE cart_items;
-NOTIFY pgrst, 'reload schema';
-```
-
-### What to build next: Suggestions tab + History tab
+### What to build next: Suggestions + History tabs
 
 **Context:** Phases 1–6 fully committed and type-check clean. Branch `claude/jolly-euclid`. `/meals` has 4 tabs; `SuggestionsTab` and `HistoryTab` are still stubs.
 
@@ -557,6 +579,22 @@ Full meals feature stack built. All code lives in `claude/jolly-euclid` worktree
 - Migration 008: `user_preferences` table (`app/backend/migrations/008_user_preferences.sql`)
 - Also 006 + 007 if not yet run
 - After each: `NOTIFY pgrst, 'reload schema';`
+
+---
+
+### Session 11 — Peer review fixes + PROGRESS.md merge (2026-04-28)
+
+Applied all outstanding peer-review fixes to `ShoppingList.tsx`:
+- **W2** — wired `userId`/`householdId` props into the Supabase Realtime channel filter (`household_id=eq.X` or `user_id=eq.X`) so household members only receive relevant change events
+- **W1** — added `mountedRef.current` guards to `handleConfirmBuy`: after `await fetch`, in the `catch` block, and in `finally` (now uses `if (mountedRef.current) setSaving(false)`)
+- **W3** — `handleCheckCustom` and `handleDeleteCustom` now check `res.ok` before calling `fetchCustomItems()`
+- **m2** — changed qty input `min="0"` → `min="0.001"` to match server validation
+
+`tsc --noEmit`: 0 errors. All Phase 6 commits pushed to `claude/jolly-euclid`.
+
+Also merged PROGRESS.md: added full Index, UI Components section, Sessions 5–9 research archives, complete API route table (25 routes), expanded backlog with detailed checklists. Pushed as commit `f7bb907`.
+
+**Identified gap (not yet fixed):** `MealPlanTab.tsx` receives `userId`/`householdId` as `_userId`/`_householdId` (unused) and does not forward them to `<ShoppingList>`. This means the Realtime subscription filter is `undefined` and household sync won't filter correctly. Fix is 2 lines — scheduled for Day 1 (2026-04-29).
 
 ---
 
