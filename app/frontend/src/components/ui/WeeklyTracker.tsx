@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { format } from 'date-fns'
 import {
   getWeekDays,
@@ -18,15 +18,18 @@ type Props = {
   initialLogs: DailyLog[]
 }
 
-// Which date is currently showing the workout detail panel
 type WorkoutDetailKey = string | null // 'YYYY-MM-DD'
 
 async function postLog(log_date: string, metric_key: string, value: unknown) {
-  await fetch('/api/daily-logs', {
+  const res = await fetch('/api/daily-logs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ log_date, metric_key, value }),
   })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error ?? `HTTP ${res.status}`)
+  }
 }
 
 export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
@@ -37,6 +40,14 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
   })
   const [pending, setPending] = useState<Record<string, boolean>>({})
   const [workoutDetail, setWorkoutDetail] = useState<WorkoutDetailKey>(null)
+  const [saveFailMsg, setSaveFailMsg] = useState<string | null>(null)
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current)
+    }
+  }, [])
 
   const days = getWeekDays(weekStart)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
@@ -57,7 +68,6 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
     }))
     setPending((p) => ({ ...p, [key]: true }))
 
-    // When worked_out is toggled on, open detail panel for today
     if (metricKey === 'worked_out' && nextVal) {
       setWorkoutDetail(dateStr)
     } else if (metricKey === 'worked_out' && !nextVal) {
@@ -67,6 +77,7 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
     try {
       await postLog(dateStr, metricKey, nextVal)
     } catch {
+      // Revert optimistic update
       setLogs((prev) => ({
         ...prev,
         [dateStr]: {
@@ -74,6 +85,10 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
           [metricKey]: currentVal,
         } as DailyLog,
       }))
+      // Show error banner for 4 seconds
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current)
+      setSaveFailMsg("Couldn't save — tap to retry")
+      errorTimerRef.current = setTimeout(() => setSaveFailMsg(null), 4000)
     } finally {
       setPending((p) => {
         const next = { ...p }
@@ -83,8 +98,9 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
     }
   }
 
-  async function saveWorkoutDetail(dateStr: string, intensity: number | null, distance: string) {
+  async function saveWorkoutDetail(dateStr: string, intensity: number | null, distance: string): Promise<void> {
     const distNum = distance.trim() === '' ? null : parseFloat(distance)
+    const prevLog = logs[dateStr]
     setLogs((prev) => ({
       ...prev,
       [dateStr]: {
@@ -94,8 +110,18 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
       } as DailyLog,
     }))
     setWorkoutDetail(null)
-    if (intensity !== null) await postLog(dateStr, 'workout_intensity', intensity)
-    if (distNum !== null && !isNaN(distNum)) await postLog(dateStr, 'workout_distance', distNum)
+    try {
+      if (intensity !== null) await postLog(dateStr, 'workout_intensity', intensity)
+      if (distNum !== null && !isNaN(distNum)) await postLog(dateStr, 'workout_distance', distNum)
+    } catch {
+      setLogs((prev) => ({
+        ...prev,
+        [dateStr]: prevLog ?? ({ log_date: dateStr, week_start: weekStart } as DailyLog),
+      }))
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current)
+      setSaveFailMsg("Couldn't save workout details — try again")
+      errorTimerRef.current = setTimeout(() => setSaveFailMsg(null), 4000)
+    }
   }
 
   const byCategory = F_CATEGORIES.map((f) => ({
@@ -109,10 +135,18 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
   const overallPct = totalPossible >= 1 ? Math.round((totalDone / totalPossible) * 100) : 0
 
   const todayDayIndex = days.findIndex((d) => format(d, 'yyyy-MM-dd') === todayStr)
-  const effectiveTodayIndex = todayDayIndex === -1 ? 6 : todayDayIndex
+  // Past weeks: todayDayIndex === -1 → set to 7 so isFuture is never true (all days interactive)
+  const effectiveTodayIndex = todayDayIndex === -1 ? 7 : todayDayIndex
 
   return (
     <div className="space-y-4">
+
+      {/* Save error banner */}
+      {saveFailMsg && (
+        <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 font-medium">
+          {saveFailMsg}
+        </div>
+      )}
 
       {/* Weekly progress summary */}
       <div className="surface-card rounded-2xl px-4 py-4">
@@ -120,7 +154,7 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
           <div>
             <p className="text-sm font-bold text-gray-900">Weekly progress</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {format(days[0], 'MMM d')} - {format(days[6], 'MMM d')}
+              {format(days[0], 'MMM d')} – {format(days[6], 'MMM d')}
             </p>
           </div>
           <div className="text-right">
@@ -131,22 +165,27 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full bg-indigo-400 transition-all duration-500"
-            style={{ width: `${overallPct}%` }}
+            style={{ width: `${Math.min(100, overallPct)}%` }}
           />
         </div>
 
-        {/* Day column labels */}
+        {/* Day column labels — today gets an indigo pill */}
         <div className="grid grid-cols-7 gap-1 mt-3">
           {days.map((d, i) => {
             const isToday = format(d, 'yyyy-MM-dd') === todayStr
             return (
-              <div key={i} className="flex flex-col items-center gap-0.5">
-                <span className={`text-[9px] font-semibold uppercase ${isToday ? 'text-indigo-500' : 'text-gray-400'}`}>
-                  {DAY_LABELS[i]}
-                </span>
-                <span className={`text-[10px] tabular-nums ${isToday ? 'text-indigo-500 font-bold' : 'text-gray-400'}`}>
-                  {format(d, 'd')}
-                </span>
+              <div key={i} className="flex flex-col items-center">
+                {isToday ? (
+                  <div className="flex flex-col items-center bg-indigo-500 text-white rounded-md px-1 py-0.5 w-full">
+                    <span className="text-[9px] font-semibold uppercase leading-tight">{DAY_LABELS[i]}</span>
+                    <span className="text-[10px] tabular-nums font-bold leading-tight">{format(d, 'd')}</span>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-[9px] font-semibold uppercase text-gray-400">{DAY_LABELS[i]}</span>
+                    <span className="text-[10px] tabular-nums text-gray-400">{format(d, 'd')}</span>
+                  </>
+                )}
               </div>
             )
           })}
@@ -176,7 +215,8 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
 
                 return (
                   <div key={goal.metric_key} className="px-3 py-3">
-                    <div className="flex items-center justify-between mb-2">
+                    {/* Goal header */}
+                    <div className="flex items-center justify-between mb-1.5">
                       <p className="text-sm font-medium text-gray-800">
                         {opt?.emoji} {goal.label}
                       </p>
@@ -187,9 +227,19 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
                             : 'bg-gray-100 text-gray-600'
                         }`}
                       >
-                        {count}/{goal.target}
-                        {isHit ? ' ✓' : ''}
+                        {count}/{goal.target}{isHit ? ' ✓' : ''}
                       </span>
+                    </div>
+
+                    {/* Progress bar — fills with category gradient, turns emerald when hit */}
+                    <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-2">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${isHit ? 'bg-emerald-400' : ''}`}
+                        style={{
+                          width: `${goal.target > 0 ? Math.min(100, (count / goal.target) * 100) : 0}%`,
+                          ...(isHit ? {} : { background: `linear-gradient(90deg, ${theme.from}, ${theme.to})` }),
+                        }}
+                      />
                     </div>
 
                     {/* 7-day checkbox grid */}
@@ -210,10 +260,11 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
                             className={`
                               h-9 rounded-lg flex items-center justify-center transition-all tap-scale
                               ${isFuture ? 'opacity-25 cursor-default' : 'cursor-pointer'}
-                              ${isToday && !checked ? 'ring-2 ring-offset-1' : ''}
+                              ${isToday && !checked ? 'ring-2 ring-offset-1 ring-indigo-400 bg-indigo-50' : ''}
                               ${checked
                                 ? 'text-white shadow-sm'
-                                : 'bg-gray-100 text-gray-300 hover:bg-gray-200'}
+                                : 'text-gray-300 hover:bg-gray-200'}
+                              ${!checked && !isToday ? 'bg-gray-100' : ''}
                             `}
                             style={
                               checked
@@ -234,7 +285,7 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
                       })}
                     </div>
 
-                    {/* Workout detail panel — shown per checked day when worked_out */}
+                    {/* Workout detail panels */}
                     {goal.metric_key === 'worked_out' && (
                       <div className="mt-2 space-y-1">
                         {days.map((d, i) => {
@@ -303,7 +354,7 @@ type WorkoutDetailProps = {
   savedDistance: number | null | undefined
   theme: { from: string; to: string }
   onOpen: () => void
-  onSave: (dateStr: string, intensity: number | null, distance: string) => void
+  onSave: (dateStr: string, intensity: number | null, distance: string) => Promise<void>
 }
 
 function WorkoutDetail({
@@ -311,6 +362,7 @@ function WorkoutDetail({
 }: WorkoutDetailProps) {
   const [intensity, setIntensity] = useState<number | null>(savedIntensity ?? null)
   const [distance, setDistance] = useState<string>(savedDistance != null ? String(savedDistance) : '')
+  const [isSaving, setIsSaving] = useState(false)
 
   const hasSaved = savedIntensity != null || (savedDistance != null && savedDistance > 0)
 
@@ -321,13 +373,15 @@ function WorkoutDetail({
         className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 transition-colors"
       >
         <span className="text-xs font-medium text-gray-600">
-          {dayLabel} workout details
+          {hasSaved
+            ? `${dayLabel} workout`
+            : `${dayLabel} · add intensity & distance`}
         </span>
         <div className="flex items-center gap-2">
           {hasSaved && (
             <span className="text-[10px] text-gray-400">
               {savedIntensity != null ? `L${savedIntensity}` : ''}
-              {savedIntensity != null && savedDistance != null ? ' · ' : ''}
+              {savedIntensity != null && savedDistance != null && savedDistance > 0 ? ' · ' : ''}
               {savedDistance != null && savedDistance > 0 ? `${savedDistance}km` : ''}
             </span>
           )}
@@ -343,7 +397,6 @@ function WorkoutDetail({
 
       {isOpen && (
         <div className="px-3 pb-3 space-y-3 border-t border-gray-100 pt-3">
-          {/* Intensity 1-7 */}
           <div>
             <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Intensity
@@ -371,10 +424,9 @@ function WorkoutDetail({
             </div>
           </div>
 
-          {/* Distance */}
           <div>
             <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-              Avg distance (km)
+              Distance (km)
             </p>
             <input
               type="number"
@@ -388,11 +440,15 @@ function WorkoutDetail({
           </div>
 
           <button
-            onClick={() => onSave(dateStr, intensity, distance)}
-            className="w-full h-9 rounded-xl text-sm font-semibold text-white transition-all"
+            onClick={() => {
+              setIsSaving(true)
+              void onSave(dateStr, intensity, distance).finally(() => setIsSaving(false))
+            }}
+            disabled={isSaving}
+            className="w-full h-9 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
             style={{ background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }}
           >
-            Save
+            {isSaving ? 'Saving…' : 'Save'}
           </button>
         </div>
       )}
