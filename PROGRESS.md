@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-04-28 (Session 12)
+Last updated: 2026-04-28 (Session 13)
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
@@ -13,38 +13,44 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 **Branch:** `claude/jolly-euclid` · **Worktree:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`
 
 ### What is done (all committed to `claude/jolly-euclid`)
-- Migration 009: `cart_items` table with RLS + Realtime
-- Migration 010: suggestion cache columns on `user_preferences`
-- Migrations 005–008 now committed to branch (were stranded in main worktree)
-- `GET/POST /api/cart`, `PATCH/DELETE /api/cart/[id]`, `GET /api/cart/instacart` — all built, auth-checked, type-clean
-- `ShoppingList.tsx` — full rewrite: add-item form, Realtime sync, 5s undo toast, Instacart button
-- `GET /api/meal-suggestions` — 6-hour cache keyed on pantry hash (skips Claude call on hit)
-- `MealPlanTab.tsx` — **fixed** `userId`/`householdId` prop forwarding + timezone-safe weekStart
-- CLAUDE.md — updated with Session Start Protocol + Branch & Merge Discipline
+- Migrations 005–010 committed to branch
+- `GET/POST /api/cart`, `PATCH/DELETE /api/cart/[id]`, `GET /api/cart/instacart`
+- `ShoppingList.tsx` — add-item form, Realtime sync, 5s undo toast, Instacart button
+- `GET /api/meal-suggestions` — 6-hour cache keyed on pantry hash
+- `MealPlanTab.tsx` — fixed `userId`/`householdId` prop forwarding + timezone-safe weekStart
+- **Phase 8 (Session 13):** Recipe catalog — migration 011, 25 seed recipes, full browse/filter/add-to-plan flow
+  - `GET /api/catalog-recipes` — pantry-scored, cuisine + dietary filters
+  - `POST /api/catalog-recipes/[id]` — copy to recipe_imports, upsert plan entry, return missing ingredients
+  - `GET /api/recipe-import/history` — fixed missing route (was breaking RecipePicker)
+  - `CatalogBrowser`, `CatalogRecipeCard`, `AddToPlanDrawer`, `MissingIngredientsDrawer`
+  - `SuggestionsTab.tsx` — catalog section below AI picks; all peer-review fixes applied
+- CLAUDE.md — Session Start + End Protocol + Branch & Merge Discipline
 - All peer-review fixes applied; `tsc --noEmit` clean
 
 ### What is broken / not yet done
-1. **Migrations not yet run in Supabase** — run these in order in SQL Editor, then `NOTIFY pgrst, 'reload schema';` after each:
-   - `009_cart_items.sql` — cart_items table (required for shopping cart)
-   - `010_suggestion_cache.sql` — suggestion cache columns (required for caching)
-2. **SuggestionsTab** — still a stub (planned Day 2)
-3. **HistoryTab** — still a stub (planned Day 3)
+1. **Migrations not yet run in Supabase** — run these in order, `NOTIFY pgrst, 'reload schema';` after each:
+   - `009_cart_items.sql` — required for shopping cart (may already be done)
+   - `010_suggestion_cache.sql` — required for suggestion caching (may already be done)
+   - `011_catalog_recipes.sql` — **required for Phase 8 catalog** (new this session)
+   - Then run `app/backend/seeds/001_catalog_recipes.sql` to insert the 25 recipes
+2. **HistoryTab** — still a stub (next priority)
 
-### Day-by-day plan (2026-04-29 through 2026-05-02)
-| Day | Goal | Scope |
-|-----|------|-------|
-| **Day 1 — Apr 29** | Shopping cart visible + working in UI | Fix MealPlanTab prop forwarding, user runs migration 009, smoke-test full cart flow, commit + push |
-| **Day 2 — Apr 30** | Suggestions tab live | `GET /api/meal-suggestions` (Spoonacular + Claude scoring + 6h cache) + `SuggestionsTab.tsx` + peer review + commit |
-| **Day 3 — May 1** | History tab + LogMealTab pre-fill | `GET /api/meal-history` + `HistoryTab.tsx` + `?dishId=` wiring into LogMealTab + peer review + commit |
-| **Day 4 — May 2** | Merge to main + deploy | Final auth audit, merge `claude/jolly-euclid` → `main`, add Vercel env vars, verify live URL |
+### Next session priorities
+| Priority | Goal |
+|----------|------|
+| **1** | User runs migrations 011 + seed in Supabase, then smoke-tests catalog locally |
+| **2** | HistoryTab — `GET /api/meal-history` + `HistoryTab.tsx` |
+| **3** | Merge to main + deploy when HistoryTab is done |
 
-### Day 1 exact steps (do these in order)
-1. ✅ **MealPlanTab prop fix already committed** (Session 12)
-2. User: run `app/backend/migrations/009_cart_items.sql` in Supabase SQL Editor → `NOTIFY pgrst, 'reload schema';`
-3. User: run `app/backend/migrations/010_suggestion_cache.sql` in Supabase SQL Editor → `NOTIFY pgrst, 'reload schema';`
+### To test Phase 8 locally
+1. Run `app/backend/migrations/011_catalog_recipes.sql` in Supabase SQL Editor
+2. Run `app/backend/seeds/001_catalog_recipes.sql`
+3. After each: `NOTIFY pgrst, 'reload schema';`
 4. `cd app/frontend && npm run dev`
-5. Open `/meals?tab=plan` and verify: shopping list loads, add item, check off, undo toast appears for 5s, Instacart button copies to clipboard
-6. Open `/meals?tab=suggest` and verify: suggestions load with AI reasoning, second load is faster (cache hit)
+5. Open `/meals?tab=suggest` → scroll below AI suggestions → catalog grid loads
+6. Filter by "Italian" → grid updates; filter "Vegetarian" → only vegetarian recipes
+7. Tap "Add to Plan" → drawer; pick day/meal/servings → add → MissingIngredientsDrawer appears
+8. Tap "Add all to shopping list" → go to Plan tab → shopping list shows those items
 
 ---
 
@@ -312,6 +318,24 @@ user_preferences (id, user_id UUID UNIQUE, household_id UUID,
 -- RLS: USING (true) WITH CHECK (true)
 ```
 
+### Migration 010 — Suggestion Cache (Phase 7)
+```sql
+ALTER TABLE user_preferences
+  ADD COLUMN IF NOT EXISTS cached_suggestions    JSONB,
+  ADD COLUMN IF NOT EXISTS last_suggestion_at    TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS pantry_snapshot_hash  TEXT;
+```
+
+### Migration 011 — Catalog Recipes (Phase 8)
+```sql
+catalog_recipes (id UUID PRIMARY KEY, title TEXT, description TEXT, image_url TEXT,
+                 cuisines TEXT[] DEFAULT '{}', dietary_tags TEXT[] DEFAULT '{}',
+                 recipe_json JSONB NOT NULL, created_at TIMESTAMPTZ DEFAULT now())
+-- GIN indexes on cuisines + dietary_tags
+-- RLS: FOR SELECT USING (true)
+```
+Seed: `app/backend/seeds/001_catalog_recipes.sql` — 25 curated recipes.
+
 ### Migration 009 — Cart Items (Phase 6)
 ```sql
 cart_items (id UUID PRIMARY KEY, user_id UUID NOT NULL, household_id UUID,
@@ -374,6 +398,9 @@ cart_items (id UUID PRIMARY KEY, user_id UUID NOT NULL, household_id UUID,
 | `/api/cart` | GET/POST | Fetch / add custom cart items |
 | `/api/cart/[id]` | PATCH/DELETE | Edit, check-off, or remove a cart item |
 | `/api/cart/instacart` | GET | Build Instacart share link (clipboard fallback) |
+| `/api/catalog-recipes` | GET | Catalog browse: `?cuisine=` `?dietary=`, pantry-scored, sorted by match % |
+| `/api/catalog-recipes/[id]` | POST | Add catalog recipe to plan: dedup recipe_imports, upsert plan, return missing ingredients |
+| `/api/recipe-import/history` | GET | Confirmed recipe imports for current user (fixes RecipePicker) |
 
 ---
 
@@ -437,10 +464,10 @@ src/
   components/meals/
     MealsClient.tsx          ← tab state via URL params
     MealsTabs.tsx            ← 4-tab pill bar
-    SuggestionsTab.tsx       ← ⚠️ STUB → Phase 7
+    SuggestionsTab.tsx       ← AI suggestions + catalog browser (Phase 8 complete)
     LogMealTab.tsx           ← full (photo/search → confirm → save)
     ImportRecipeTab.tsx      ← full (URL/screenshot/share → preview → save)
-    HistoryTab.tsx           ← ⚠️ STUB → Phase 7
+    HistoryTab.tsx           ← ⚠️ STUB → Phase 9 (next)
     MealPlanTab.tsx          ← 7-day grid, RecipePicker modal, ShoppingList inline
     PantryTab.tsx            ← pantry CRUD, low-stock + expiry banners
     MealPhotoCapture.tsx     ← camera + gallery, preview thumbnail
@@ -454,6 +481,10 @@ src/
     RecipePicker.tsx         ← modal to pick saved recipe for meal plan
     MealPlanDay.tsx          ← single day card in 7-day grid
     ShoppingList.tsx         ← store-section grouped, cart items, undo toast, Instacart
+    CatalogBrowser.tsx       ← cuisine/dietary filter chips + recipe grid (Phase 8)
+    CatalogRecipeCard.tsx    ← recipe card with pantry match bar (Phase 8)
+    AddToPlanDrawer.tsx      ← bottom-sheet: day/meal/servings picker (Phase 8)
+    MissingIngredientsDrawer.tsx ← bottom-sheet: missing items → cart (Phase 8)
     AddPantryForm.tsx        ← inline add form for PantryTab
     PantryItemCard.tsx       ← pantry item display + edit + delete
     PreferencesForm.tsx      ← dietary chips, cuisine chips, household stepper, cooking time radio
@@ -586,6 +617,35 @@ Full meals feature stack built. All code lives in `claude/jolly-euclid` worktree
 
 ---
 
+### Session 13 — Phase 8: Recipe Catalog (2026-04-28)
+
+Built the complete recipe catalog feature on top of the existing suggestions tab.
+
+**Commit:** `ca5b41a` — 10 files, 1804 insertions
+
+**Backend:**
+- Migration 011: `catalog_recipes` table with `cuisines TEXT[]`, `dietary_tags TEXT[]`, `recipe_json JSONB`, GIN indexes on both array columns, RLS select-all policy
+- Seed: 25 INSERT statements (`app/backend/seeds/001_catalog_recipes.sql`) — 6 cuisines (italian, asian, mexican, mediterranean, american, breakfast), 4 dietary tags (vegetarian, vegan, gluten_free, dairy_free), realistic 5-8 ingredients + 3-5 steps each
+- `GET /api/catalog-recipes` — auth, cuisine/dietary filter via `.contains()`, household-scoped pantry fetch, Fuse.js match per recipe → `pantryMatchPct` + `missingCount`, sorted by match % descending
+- `POST /api/catalog-recipes/[id]` — auth, UUID/date/mealType/servings validation, dedup `recipe_imports` by `source_url = 'catalog:id'`, upsert `meal_plans` + `meal_plan_entries`, scaled missing ingredient computation
+- `GET /api/recipe-import/history` — new file, fixes silent breakage in RecipePicker
+
+**Frontend:**
+- `CatalogRecipeCard` — title, cook time/servings badges, dietary tag pills (green=veg/vegan, blue=gluten_free), pantry match progress bar (green/amber/red), Add to Plan button
+- `CatalogBrowser` — cuisine + dietary single-select filter chips (disabled during load), `useEffect` with cancellation flag, 1–2 col grid, loading/error/empty states
+- `AddToPlanDrawer` — bottom-sheet, day picker (Sat–Fri), meal type (Breakfast/Lunch/Dinner/Snack), servings stepper, state resets on recipe change (W1 fix)
+- `MissingIngredientsDrawer` — bottom-sheet, fan-out POST to `/api/cart`, auto-close 400ms after done, skip link
+- `SuggestionsTab` — catalog section below AI picks, `useMemo` weekStart (W3 fix), `r.ok` check on suggestions fetch (W2 fix), noPantry state no longer blocks catalog
+
+**Peer review fixes applied:** input validation (C2), drawer state reset (W1), r.ok check (W2), weekStart useMemo (W3), servings range guard (W4), chips disabled during load (W5).
+
+**User actions required:**
+1. Run `011_catalog_recipes.sql` in Supabase SQL Editor
+2. Run `seeds/001_catalog_recipes.sql`
+3. After each: `NOTIFY pgrst, 'reload schema';`
+
+---
+
 ### Session 11 — Peer review fixes + PROGRESS.md merge (2026-04-28)
 
 Applied all outstanding peer-review fixes to `ShoppingList.tsx`:
@@ -668,10 +728,11 @@ Then add `ANTHROPIC_API_KEY` + `SPOONACULAR_API_KEY` to Vercel environment varia
 - [ ] Upgrade Next.js from 14.2.0 (flagged security advisory)
 
 ### Meals feature — next phases
-- [ ] Suggestions tab (Phase 7A/7B above)
-- [ ] History tab (Phase 7D above)
-- [ ] LogMealTab pre-fill from Suggestions (Phase 7C above)
-- [ ] Claude API caching: cache suggestions 6h if pantry unchanged (saves ~80–90% of Claude calls)
+- [x] Suggestions tab — AI picks + catalog browse (Phase 8 complete)
+- [x] Recipe catalog — 25 curated recipes, pantry-scored, add to plan (Phase 8 complete)
+- [x] Claude API caching — 6h suggestion cache keyed on pantry hash (Phase 7 complete)
+- [ ] History tab — `GET /api/meal-history` + `HistoryTab.tsx` (Phase 9, next)
+- [ ] LogMealTab pre-fill from Suggestions (`?dishId=` param wiring)
 - [ ] Barcode scan for pantry items (`@zxing/browser` + Open Food Facts)
 - [ ] Receipt OCR import (Mindee API) → auto-add to pantry
 - [ ] Apply for Instacart IDP key (instacart.com/company/business/developers)

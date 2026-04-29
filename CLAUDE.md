@@ -41,6 +41,38 @@ Report in 2–3 sentences: what's live, what's ahead of main, any stranded work,
 
 ---
 
+## SESSION END PROTOCOL — run at end of every session before stopping
+
+**This is required. Do not end a session without completing all steps.**
+
+**Step 1 — Update PROGRESS.md**
+Update `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid\PROGRESS.md`:
+- Change `Last updated` line to today's date + session number
+- Update `START HERE` → `What is done` block: add any new completed items
+- Update `What is broken / not yet done`: remove fixed items, add any new gaps found
+- Update `Next session priorities` table
+- Add a new `### Session N — Title (date)` entry to Section 7 (Session Log) describing what was built, what commits were made, and any user actions required
+- Update the API Routes table (Section 4), File Map (Section 6), and DB Schema (Section 3) if new files/tables were added
+- Update the backlog (Section 10): check off completed items
+
+**Step 2 — Commit PROGRESS.md**
+```bash
+cd C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid
+git add PROGRESS.md
+git commit -m "Update PROGRESS.md: Session N log + status
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+**Step 3 — Tell the user what to do next**
+Always end with a clear "User actions required" list:
+- Migrations to run in Supabase SQL Editor (with exact file paths)
+- `npm run dev` command to test locally
+- Any env vars to add to Vercel
+- Whether a merge to main is recommended
+
+---
+
 ## Branch & merge discipline
 
 ### Rule 1 — All feature work lives in the worktree
