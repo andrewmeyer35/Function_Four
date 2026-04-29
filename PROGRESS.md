@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-04-28
+Last updated: 2026-04-28 (Session 12)
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
@@ -12,17 +12,23 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 
 **Branch:** `claude/jolly-euclid` · **Worktree:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`
 
-### What is done (all committed + pushed)
-- Migration 009: `cart_items` table — **user still needs to run this in Supabase SQL Editor** (file: `app/backend/migrations/009_cart_items.sql`)
+### What is done (all committed to `claude/jolly-euclid`)
+- Migration 009: `cart_items` table with RLS + Realtime
+- Migration 010: suggestion cache columns on `user_preferences`
+- Migrations 005–008 now committed to branch (were stranded in main worktree)
 - `GET/POST /api/cart`, `PATCH/DELETE /api/cart/[id]`, `GET /api/cart/instacart` — all built, auth-checked, type-clean
-- `ShoppingList.tsx` — full rewrite: add-item form, per-section custom items, Realtime sync, 5s undo toast, Instacart button, collapsible bought zone
+- `ShoppingList.tsx` — full rewrite: add-item form, Realtime sync, 5s undo toast, Instacart button
+- `GET /api/meal-suggestions` — 6-hour cache keyed on pantry hash (skips Claude call on hit)
+- `MealPlanTab.tsx` — **fixed** `userId`/`householdId` prop forwarding + timezone-safe weekStart
+- CLAUDE.md — updated with Session Start Protocol + Branch & Merge Discipline
 - All peer-review fixes applied; `tsc --noEmit` clean
 
 ### What is broken / not yet done
-1. **`MealPlanTab.tsx` does not forward `userId`/`householdId` to `ShoppingList`** — they are received as `_userId`/`_householdId` (unused). The Realtime subscription filter will be `undefined` until this is fixed. Fix: remove the `_` prefix and add `userId={userId} householdId={householdId}` to the `<ShoppingList>` call. File: `app/frontend/src/components/meals/MealPlanTab.tsx`
-2. **Migration 009 not yet run in Supabase** — `cart_items` table does not exist in production until user runs the SQL.
-3. **SuggestionsTab** — still a stub (planned Day 2)
-4. **HistoryTab** — still a stub (planned Day 3)
+1. **Migrations not yet run in Supabase** — run these in order in SQL Editor, then `NOTIFY pgrst, 'reload schema';` after each:
+   - `009_cart_items.sql` — cart_items table (required for shopping cart)
+   - `010_suggestion_cache.sql` — suggestion cache columns (required for caching)
+2. **SuggestionsTab** — still a stub (planned Day 2)
+3. **HistoryTab** — still a stub (planned Day 3)
 
 ### Day-by-day plan (2026-04-29 through 2026-05-02)
 | Day | Goal | Scope |
@@ -33,14 +39,12 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 | **Day 4 — May 2** | Merge to main + deploy | Final auth audit, merge `claude/jolly-euclid` → `main`, add Vercel env vars, verify live URL |
 
 ### Day 1 exact steps (do these in order)
-1. In `app/frontend/src/components/meals/MealPlanTab.tsx`:
-   - Change `{ userId: _userId, householdId: _householdId }` → `{ userId, householdId }`
-   - Add `userId={userId} householdId={householdId}` props to the `<ShoppingList>` call
-2. Run `npx tsc --noEmit` in `app/frontend/` — should be 0 errors
-3. Commit: `git add app/frontend/src/components/meals/MealPlanTab.tsx && git commit -m "Fix: forward userId + householdId to ShoppingList for Realtime filter"`
-4. Push: `git push origin claude/jolly-euclid`
-5. User: run `app/backend/migrations/009_cart_items.sql` in Supabase SQL Editor, then `NOTIFY pgrst, 'reload schema';`
-6. Open `/meals?tab=plan` and verify: add item, check off, undo toast appears for 5s, Instacart button copies to clipboard
+1. ✅ **MealPlanTab prop fix already committed** (Session 12)
+2. User: run `app/backend/migrations/009_cart_items.sql` in Supabase SQL Editor → `NOTIFY pgrst, 'reload schema';`
+3. User: run `app/backend/migrations/010_suggestion_cache.sql` in Supabase SQL Editor → `NOTIFY pgrst, 'reload schema';`
+4. `cd app/frontend && npm run dev`
+5. Open `/meals?tab=plan` and verify: shopping list loads, add item, check off, undo toast appears for 5s, Instacart button copies to clipboard
+6. Open `/meals?tab=suggest` and verify: suggestions load with AI reasoning, second load is faster (cache hit)
 
 ---
 
