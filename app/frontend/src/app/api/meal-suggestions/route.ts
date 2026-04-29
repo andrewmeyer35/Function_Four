@@ -17,6 +17,7 @@ interface PantryRow {
   unit: string | null
   expiration_date: string | null
   min_quantity: number | null
+  updated_at: string | null
 }
 
 interface Suggestion {
@@ -51,7 +52,7 @@ export async function GET() {
   // Fetch pantry
   const pantryQuery = supabase
     .from('pantry_items')
-    .select('id, name, quantity, unit, expiration_date, min_quantity')
+    .select('id, name, quantity, unit, expiration_date, min_quantity, updated_at')
     .order('name')
   if (householdId) {
     pantryQuery.eq('household_id', householdId)
@@ -60,6 +61,14 @@ export async function GET() {
   }
   const { data: pantryRows } = await pantryQuery
   const pantry: PantryRow[] = (pantryRows ?? []) as PantryRow[]
+
+  // Compute pantry hash — detects adds, removes, and quantity/expiry updates
+  const pantryHash = pantry.length === 0
+    ? 'empty'
+    : pantry
+        .map((p) => `${p.id}:${p.updated_at ?? ''}`)
+        .sort()
+        .join('|')
 
   // Identify expiring items (≤7 days) and low-stock items
   const now = Date.now()
@@ -72,12 +81,25 @@ export async function GET() {
     (p) => p.min_quantity != null && (p.quantity ?? 0) <= p.min_quantity
   )
 
-  // Fetch user preferences
+  // Fetch user preferences (also used for cache storage)
   const { data: prefsRow } = await supabase
     .from('user_preferences')
-    .select('dietary_restrictions, disliked_ingredients, cuisine_preferences')
+    .select('dietary_restrictions, disliked_ingredients, cuisine_preferences, cached_suggestions, last_suggestion_at, pantry_snapshot_hash')
     .eq('user_id', user.id)
     .maybeSingle()
+
+  // Return cached suggestions if pantry unchanged and cache is <6 hours old
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000
+  const cacheAge = prefsRow?.last_suggestion_at
+    ? Date.now() - new Date(prefsRow.last_suggestion_at as string).getTime()
+    : Infinity
+  if (
+    prefsRow?.cached_suggestions &&
+    (prefsRow.pantry_snapshot_hash as string | null) === pantryHash &&
+    cacheAge < SIX_HOURS_MS
+  ) {
+    return NextResponse.json(prefsRow.cached_suggestions)
+  }
 
   const dietaryRestrictions: string[] = (prefsRow?.dietary_restrictions as string[]) ?? []
   const dislikedIngredients: string[] = ((prefsRow?.disliked_ingredients as string[]) ?? [])
@@ -131,7 +153,7 @@ export async function GET() {
       const results = fuse.search(ing.name)
       const best = results[0]
 
-      if (!best || (best.score ?? 1) > 0.4) {
+      if (!best || (best.score ?? 1) >= 0.4) {
         missingIngredients.push(ing.name)
       } else {
         const pantryItem = pantry.find((p) => p.id === best.item.id)
@@ -209,7 +231,8 @@ Return ONLY the JSON array. No markdown.`,
 
       const rawText = msg.content[0].type === 'text' ? msg.content[0].text : '[]'
       const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
-      const reasons = JSON.parse(cleaned) as string[]
+      const parsed = JSON.parse(cleaned)
+      const reasons = Array.isArray(parsed) ? (parsed as string[]) : []
 
       reasons.forEach((reason, i) => {
         if (topCandidates[i]) topCandidates[i].reason = reason
@@ -232,9 +255,19 @@ Return ONLY the JSON array. No markdown.`,
     }
   })
 
-  return NextResponse.json({
+  const responsePayload = {
     suggestions: topCandidates,
     expiringItems: expiringItems.map((e) => ({ name: e.name, expiration_date: e.expiration_date })),
     lowStockItems: lowStockItems.map((e) => ({ name: e.name, quantity: e.quantity, unit: e.unit })),
-  })
+  }
+
+  // Write to cache (non-blocking — cache miss is acceptable)
+  void supabase.from('user_preferences').upsert({
+    user_id: user.id,
+    cached_suggestions: responsePayload,
+    last_suggestion_at: new Date().toISOString(),
+    pantry_snapshot_hash: pantryHash,
+  }, { onConflict: 'user_id' })
+
+  return NextResponse.json(responsePayload)
 }
