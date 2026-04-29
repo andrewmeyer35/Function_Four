@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-04-28 (Session 13)
+Last updated: 2026-04-28 (Session 13 end-of-day)
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
@@ -27,30 +27,65 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 - CLAUDE.md — Session Start + End Protocol + Branch & Merge Discipline
 - All peer-review fixes applied; `tsc --noEmit` clean
 
+### ✅ Phase 8 tested and working (2026-04-28)
+Migration 011 + seed confirmed run. Catalog browse, filter, add-to-plan, and missing-items drawer all verified locally.
+
 ### What is broken / not yet done
-1. **Migrations not yet run in Supabase** — run these in order, `NOTIFY pgrst, 'reload schema';` after each:
-   - `009_cart_items.sql` — required for shopping cart (may already be done)
-   - `010_suggestion_cache.sql` — required for suggestion caching (may already be done)
-   - `011_catalog_recipes.sql` — **required for Phase 8 catalog** (new this session)
-   - Then run `app/backend/seeds/001_catalog_recipes.sql` to insert the 25 recipes
-2. **HistoryTab** — still a stub (next priority)
+1. **HistoryTab** — still a stub
+2. **Cart UX** — multi-select flow needed (see feedback below)
+3. **Pantry photos** — no image support yet
+4. **Image generation** — not yet built
 
-### Next session priorities
-| Priority | Goal |
-|----------|------|
-| **1** | User runs migrations 011 + seed in Supabase, then smoke-tests catalog locally |
-| **2** | HistoryTab — `GET /api/meal-history` + `HistoryTab.tsx` |
-| **3** | Merge to main + deploy when HistoryTab is done |
+### User feedback from Phase 8 test (implement Phase 9)
+Three specific requests captured after live testing:
 
-### To test Phase 8 locally
-1. Run `app/backend/migrations/011_catalog_recipes.sql` in Supabase SQL Editor
-2. Run `app/backend/seeds/001_catalog_recipes.sql`
-3. After each: `NOTIFY pgrst, 'reload schema';`
-4. `cd app/frontend && npm run dev`
-5. Open `/meals?tab=suggest` → scroll below AI suggestions → catalog grid loads
-6. Filter by "Italian" → grid updates; filter "Vegetarian" → only vegetarian recipes
-7. Tap "Add to Plan" → drawer; pick day/meal/servings → add → MissingIngredientsDrawer appears
-8. Tap "Add all to shopping list" → go to Plan tab → shopping list shows those items
+**1. Cart multi-select flow** (`ShoppingList.tsx` + `/api/cart`)
+Current: tap item → confirm modal → enter qty → save (slow, one item at a time).
+Requested: checkbox-select multiple items → tap "Done" → enter quantities for all at once → single save.
+- Add `selectedItems: Set<string>` state for checkboxes
+- Replace confirm modal with a batch-edit bottom drawer: list of selected items each with qty input
+- Single `Promise.all` POST to `/api/cart` for all selected items
+- Goal: fewer taps, faster perceived speed
+
+**2. Cart saves too slowly**
+The pantry `mark-bought` call + cart persistence happen sequentially. Optimise by running them in parallel (`Promise.all`) and showing optimistic UI updates (mark checked immediately, revert on error).
+
+**3. Pantry photos** (`PantryTab.tsx` + pantry schema)
+Add an optional `image_url TEXT` column to `pantry_items` (migration 012).
+UI: camera icon on each `PantryItemCard` → opens file picker or camera → uploads to Supabase Storage `pantry-photos` bucket → saves URL to DB.
+Show thumbnail on the card (small rounded square, 40×40px).
+
+**4. AI image generation for meal suggestions** (`/api/meal-suggestions` or new route)
+Use the image generation API (DALL-E or similar) with context: pantry items + weekly meal plan + the suggested recipe → generate a photo of the plated dish. Display as card hero image in `SuggestionsTab` suggestion cards and `CatalogRecipeCard`.
+- Keep images optional/async — show placeholder while generating
+- Cache generated image URL in `catalog_recipes.image_url` column (already in schema)
+
+### ⚡ Thursday — UI/UX Design Session (2026-05-01)
+**Do not write feature code on Thursday.** Instead run a dedicated design session:
+- Audit every screen in the app for layout, spacing, color, information hierarchy
+- Review mobile vs desktop layouts (bottom nav vs sidebar)
+- Define a consistent design language: card shadows, border radii, color palette per feature area
+- Identify any screens that feel cluttered or have confusing flows
+- Produce a design spec / decision log for implementing in a follow-up session
+- Topics to cover: meals tab information density, pantry card layout, suggestion card visual polish, onboarding flow, profile page
+
+### Next session priorities (2026-04-29)
+| Priority | Goal | Scope |
+|----------|------|-------|
+| **1 — Must** | Cart multi-select UX | `ShoppingList.tsx` refactor + optimistic updates |
+| **2 — Must** | Pantry photos | Migration 012, PantryItemCard camera, Supabase Storage upload |
+| **3 — Should** | HistoryTab | `GET /api/meal-history` + `HistoryTab.tsx` |
+| **4 — Nice** | AI image generation for catalog/suggestions | image URL on suggestion + catalog cards |
+| **Thu** | UI/UX design session | No code — audit + spec only |
+
+### Pickup checklist for next session
+```
+1. Read PROGRESS.md (this file)
+2. git log --oneline -6  (in main)
+3. git log --oneline origin/main..HEAD  (in worktree)
+4. git status --short  (in worktree — confirm clean)
+5. Say "continue" — start with cart multi-select (Priority 1)
+```
 
 ---
 
