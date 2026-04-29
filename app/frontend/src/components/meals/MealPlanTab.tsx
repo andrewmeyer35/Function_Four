@@ -50,7 +50,11 @@ function getWeekStart(): string {
   const diffToSat = day === 6 ? 0 : -(day + 1)
   const sat = new Date(today)
   sat.setDate(today.getDate() + diffToSat)
-  return sat.toISOString().slice(0, 10)
+  // Local date components — avoids UTC offset shifting the day for users west of UTC
+  const y = sat.getFullYear()
+  const m = String(sat.getMonth() + 1).padStart(2, '0')
+  const d = String(sat.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 interface Props {
@@ -58,7 +62,7 @@ interface Props {
   householdId: string | null
 }
 
-export function MealPlanTab({ userId: _userId, householdId: _householdId }: Props) {
+export function MealPlanTab({ userId, householdId }: Props) {
   const weekStart = getWeekStart()
   const [entries, setEntries] = useState<PlanEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -167,6 +171,8 @@ export function MealPlanTab({ userId: _userId, householdId: _householdId }: Prop
           shoppingItems={shoppingItems}
           lowStockItems={lowStockItems}
           weekStart={weekStart}
+          userId={userId}
+          householdId={householdId}
           loading={listLoading}
           onBought={loadShoppingList}
         />

@@ -1,11 +1,93 @@
 # Four Fs — Claude Code Instructions
 
-## Working context
+---
 
-- **Worktree:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid` on branch `claude/jolly-euclid`
-- **Always work in the worktree**, not the main directory
-- **App root:** `app/frontend/` inside the worktree
-- **Progress log:** `PROGRESS.md` at repo root — read at session start, update at session end
+## SESSION START PROTOCOL — run every session before writing any code
+
+**Step 1 — Read the progress log**
+```bash
+# In the worktree root
+cat PROGRESS.md
+```
+Understand: what phase we're on, what's done, what's next, any open bugs.
+
+**Step 2 — Orient on main (what's deployed)**
+```bash
+cd C:\Users\andre\Function_4
+git log --oneline -6
+```
+This is what's live on Vercel. Know it before touching anything.
+
+**Step 3 — Orient on the worktree (what's in progress)**
+```bash
+cd C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid
+git log --oneline origin/main..HEAD   # commits ahead of main
+git status --short                     # uncommitted changes
+```
+Understand: how many commits ahead of main, any unstaged work.
+
+**Step 4 — Scan main's working directory for stranded work**
+```bash
+cd C:\Users\andre\Function_4
+git status --short
+```
+If you see untracked feature files here, they were written in the wrong place. Do NOT commit them to main. Either:
+- Copy relevant new files to the worktree if the worktree doesn't have them
+- Discard with `git restore .` if the worktree already has the canonical version
+- Ask the user before deleting untracked files that might contain unreplicated work
+
+**Step 5 — Summarize the delta for the user**
+Report in 2–3 sentences: what's live, what's ahead of main, any stranded work, what the plan is for this session. Then ask before writing any code.
+
+---
+
+## Branch & merge discipline
+
+### Rule 1 — All feature work lives in the worktree
+```
+WRITE CODE HERE:     C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid\
+NEVER WRITE HERE:    C:\Users\andre\Function_4\   ← main working directory
+```
+The main directory is for reference and merge operations only. If a file edit touches `C:\Users\andre\Function_4\app\` directly (not via the worktree path), stop and redirect to the worktree.
+
+### Rule 2 — Main = production
+Main auto-deploys to Vercel on every push. Never push half-finished work to main.
+
+### Rule 3 — Merge criteria (all must be true)
+Before recommending a merge to main, verify every box:
+- [ ] Feature works end-to-end in local `npm run dev`
+- [ ] `npx tsc --noEmit` → 0 errors
+- [ ] Peer-review agent found no critical or warning issues
+- [ ] Auth check (`getUser()` + 401) on every API route
+- [ ] Loading, error, and empty states in every new tab component
+- [ ] All pending SQL migrations documented and ready for user to run
+- [ ] `PROGRESS.md` updated with session log and next steps
+- [ ] No secrets or `.env.local` values committed
+
+### Rule 4 — How to merge
+```bash
+# From repo root (main worktree)
+git checkout main
+git merge claude/jolly-euclid
+git push origin main
+# Vercel deploys automatically in ~2 min
+```
+After merge: user must add new env vars to Vercel, run any pending SQL migrations in Supabase.
+
+### Rule 5 — New feature = new worktree
+When starting work that should be kept separate from the current branch:
+```bash
+git worktree add .claude/worktrees/new-feature-name -b claude/new-feature-name
+```
+Work there. Never stack unrelated work on the current branch.
+
+### Rule 6 — Clean up after merge
+After a successful merge to main:
+```bash
+git worktree remove .claude/worktrees/jolly-euclid
+git branch -d claude/jolly-euclid
+```
+Start the next cycle in a fresh worktree.
 
 ---
 
@@ -150,15 +232,28 @@ export async function GET(req: NextRequest) {
 
 ## Meals feature architecture
 
-The `/meals` page has 4 tabs driven by `?tab=` URL param (managed in `MealsClient`):
-- **suggestions** — `SuggestionsTab` (Phase 5 stub → target)
-- **log** — `LogMealTab` (Phase 4 complete)
-- **import** — `ImportRecipeTab` (Phase 3 complete)
-- **history** — `HistoryTab` (Phase 5 stub → target)
+The `/meals` page has 6 tabs driven by `?tab=` URL param (managed in `MealsClient`):
+- **suggestions** — `SuggestionsTab` — AI-ranked recipes, expiry-aware (Phase 7 complete)
+- **plan** — `MealPlanTab` — 7-day meal planner + shopping list with Realtime cart
+- **log** — `LogMealTab` — photo recognition, dish search, pantry deduction (Phase 4 complete)
+- **import** — `ImportRecipeTab` — URL paste, screenshot OCR, PWA share (Phase 3 complete)
+- **pantry** — `PantryTab` — inventory management, expiry tracking
+- **history** — `HistoryTab` — saved recipes + logged meal timeline
 
-Key lib: `src/lib/meals/matchPantry.ts` — Fuse.js fuzzy match, threshold 0.4, expands aliases.
+Key libs:
+- `src/lib/meals/matchPantry.ts` — Fuse.js fuzzy match, threshold 0.4, expands aliases
+- `src/lib/meals/normalizeUnits.ts` — volume/weight unit normalization
+- `src/lib/meals/storeSection.ts` — grocery store section grouping for shopping list
+- `src/lib/meals/preferences.ts` — dietary/cuisine preference types
 
 Claude model for all AI calls: `claude-sonnet-4-6`
+
+## Current worktree
+
+- **Branch:** `claude/jolly-euclid`
+- **Path:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`
+- **App root:** `app/frontend/` inside the worktree
+- **Progress log:** `PROGRESS.md` at worktree root
 
 ## Do not
 
@@ -170,6 +265,7 @@ Claude model for all AI calls: `claude-sonnet-4-6`
 - Do not merge `claude/jolly-euclid` → `main` unless explicitly asked
 - Do not add Shadcn, Radix, or any component library
 - Do not write code without first checking if a parallel research agent should run
+- Do not write feature code in `C:\Users\andre\Function_4\app\` (main directory) — always use the worktree
 
 ## Commit pattern
 
