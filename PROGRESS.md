@@ -55,10 +55,17 @@ Add an optional `image_url TEXT` column to `pantry_items` (migration 012).
 UI: camera icon on each `PantryItemCard` → opens file picker or camera → uploads to Supabase Storage `pantry-photos` bucket → saves URL to DB.
 Show thumbnail on the card (small rounded square, 40×40px).
 
-**4. AI image generation for meal suggestions** (`/api/meal-suggestions` or new route)
-Use the image generation API (DALL-E or similar) with context: pantry items + weekly meal plan + the suggested recipe → generate a photo of the plated dish. Display as card hero image in `SuggestionsTab` suggestion cards and `CatalogRecipeCard`.
-- Keep images optional/async — show placeholder while generating
-- Cache generated image URL in `catalog_recipes.image_url` column (already in schema)
+**4. Smarter photo log — use meal plan + pantry as AI context** (`/api/meal-log/analyze-photo/route.ts`)
+When a user uploads a photo of a cooked meal, the current route sends the image to Claude with no context. Enhance it to pass three pieces of context alongside the photo:
+- **The photo** (already sent)
+- **Current pantry items** — so Claude knows what ingredients were available, making identification more accurate and deduction quantities more realistic
+- **This week's planned meals** — so Claude can cross-reference the photo against what was actually planned (e.g. "You planned Chicken Stir Fry on Monday — is this it?") to increase dish recognition confidence
+
+Changes needed:
+- `POST /api/meal-log/analyze-photo`: fetch `pantry_items` (household-scoped, top 30 by quantity) + current week's `meal_plan_entries` with `recipe_json` before calling Claude
+- Inject into the Claude prompt as structured context: `"Pantry contains: ..."` and `"This week's planned meals: ..."` — this guides the model toward likely matches
+- If the identified dish matches a planned meal with high confidence (`dishConfidence >= 0.75`), pre-populate the ingredient list from that recipe's `recipe_json.ingredients` instead of asking Claude to estimate from the photo alone (more accurate deductions)
+- No schema changes required — output shape (`MealPhotoAnalysis`) stays the same; only the prompt and pre-population logic change
 
 ### ⚡ Thursday — UI/UX Design Session (2026-05-01)
 **Do not write feature code on Thursday.** Instead run a dedicated design session:
@@ -75,7 +82,7 @@ Use the image generation API (DALL-E or similar) with context: pantry items + we
 | **1 — Must** | Cart multi-select UX | `ShoppingList.tsx` refactor + optimistic updates |
 | **2 — Must** | Pantry photos | Migration 012, PantryItemCard camera, Supabase Storage upload |
 | **3 — Should** | HistoryTab | `GET /api/meal-history` + `HistoryTab.tsx` |
-| **4 — Nice** | AI image generation for catalog/suggestions | image URL on suggestion + catalog cards |
+| **4 — Nice** | Smarter photo log | Pass pantry + meal plan as context to Claude in analyze-photo; pre-populate ingredients from matched plan entry |
 | **Thu** | UI/UX design session | No code — audit + spec only |
 
 ### Pickup checklist for next session
