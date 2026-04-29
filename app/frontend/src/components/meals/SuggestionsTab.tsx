@@ -1,6 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { CatalogBrowser } from './CatalogBrowser'
+import { AddToPlanDrawer } from './AddToPlanDrawer'
+import { MissingIngredientsDrawer } from './MissingIngredientsDrawer'
 
 interface Suggestion {
   recipeImportId: string | null
@@ -16,9 +19,49 @@ interface Suggestion {
 interface ExpiringItem { name: string; expiration_date: string | null }
 interface LowItem { name: string; quantity: number | null; unit: string | null }
 
+interface CatalogRecipe {
+  id: string
+  title: string
+  description: string | null
+  cuisines: string[]
+  dietaryTags: string[]
+  cookTimeMinutes: number | null
+  servings: number | null
+  pantryMatchPct: number
+  missingCount: number
+  recipe_json: {
+    title: string
+    servings: number | null
+    cookTimeMinutes: number | null
+    prepTimeMinutes: number | null
+    sourceText: string
+    ingredients: Array<{ name: string; quantity: number | null; unit: string | null; preparation: string | null; isOptional: boolean }>
+    steps: Array<{ stepNumber: number; instruction: string }>
+    tags: string[]
+  }
+}
+
+interface MissingItem {
+  name: string
+  quantity: number | null
+  unit: string | null
+}
+
 interface Props {
   userId: string
   householdId: string | null
+}
+
+function getWeekStart(): string {
+  const today = new Date()
+  const day = today.getDay()
+  const diffToSat = day === 6 ? 0 : -(day + 1)
+  const sat = new Date(today)
+  sat.setDate(today.getDate() + diffToSat)
+  const y = sat.getFullYear()
+  const m = String(sat.getMonth() + 1).padStart(2, '0')
+  const d = String(sat.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 function daysUntil(dateStr: string | null): number | null {
@@ -27,16 +70,25 @@ function daysUntil(dateStr: string | null): number | null {
 }
 
 export function SuggestionsTab({ userId: _userId, householdId: _householdId }: Props) {
+  const weekStart = useMemo(() => getWeekStart(), [])
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [expiring, setExpiring] = useState<ExpiringItem[]>([])
   const [lowStock, setLowStock] = useState<LowItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedRecipe, setSelectedRecipe] = useState<CatalogRecipe | null>(null)
+  const [missingItems, setMissingItems] = useState<MissingItem[]>([])
 
   useEffect(() => {
     fetch('/api/meal-suggestions')
-      .then((r) => r.json())
-      .then((json: { suggestions: Suggestion[]; expiringItems: ExpiringItem[]; lowStockItems: LowItem[] }) => {
+      .then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json() as { error?: string }
+          throw new Error(err.error ?? 'Failed to load suggestions')
+        }
+        return r.json() as Promise<{ suggestions: Suggestion[]; expiringItems: ExpiringItem[]; lowStockItems: LowItem[] }>
+      })
+      .then((json) => {
         setSuggestions(json.suggestions ?? [])
         setExpiring(json.expiringItems ?? [])
         setLowStock(json.lowStockItems ?? [])
@@ -62,22 +114,6 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
 
   const noPantry = expiring.length === 0 && lowStock.length === 0 && suggestions.length === 0
 
-  if (noPantry) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-          </svg>
-        </div>
-        <div>
-          <p className="font-semibold text-gray-900">No suggestions yet</p>
-          <p className="text-sm text-gray-500 mt-1">Add items to your pantry and import recipes — we&apos;ll suggest what to cook based on what&apos;s about to expire.</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="px-4 flex flex-col gap-5 pb-6">
 
@@ -101,7 +137,7 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
         </div>
       )}
 
-      {/* Suggestions */}
+      {/* AI Suggestions */}
       {suggestions.length > 0 && (
         <div className="flex flex-col gap-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Recommended this week</p>
@@ -158,6 +194,46 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
             ))}
           </div>
         </div>
+      )}
+
+      {/* Empty pantry prompt — shown inline so catalog is still visible */}
+      {noPantry && (
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">No AI suggestions yet</p>
+            <p className="text-sm text-gray-500 mt-1">Add items to your pantry and import recipes to get personalised picks. Browse recipes below to get started.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Recipe catalog */}
+      <div className="border-t border-gray-100 pt-4">
+        <p className="text-sm font-semibold text-gray-900 mb-3">Browse all recipes</p>
+        <CatalogBrowser onAddToPlan={(recipe) => setSelectedRecipe(recipe)} />
+      </div>
+
+      {/* Add-to-plan drawer */}
+      {selectedRecipe && (
+        <AddToPlanDrawer
+          recipe={selectedRecipe}
+          weekStart={weekStart}
+          onClose={() => setSelectedRecipe(null)}
+          onAdded={(missing) => { setSelectedRecipe(null); setMissingItems(missing) }}
+        />
+      )}
+
+      {/* Missing ingredients drawer */}
+      {missingItems.length > 0 && (
+        <MissingIngredientsDrawer
+          items={missingItems}
+          weekStart={weekStart}
+          onClose={() => setMissingItems([])}
+        />
       )}
     </div>
   )
