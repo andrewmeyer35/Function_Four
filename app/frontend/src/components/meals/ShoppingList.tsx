@@ -24,8 +24,9 @@ export interface LowStockItem {
   min_quantity: number | null
 }
 
-interface BuyConfirm {
-  item: ShoppingItem | LowStockItem
+interface BatchEditItem {
+  key: string
+  name: string
   qty: number
   unit: string
   pantryItemId: string | null
@@ -48,11 +49,15 @@ interface Props {
 }
 
 export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, householdId, loading, onBought }: Props) {
-  // ── Recipe/low-stock buy flow (existing) ──────────────────────────────────
+  // ── Bought tracking ───────────────────────────────────────────────────────
   const [bought, setBought] = useState<Set<string>>(new Set())
-  const [confirm, setConfirm] = useState<BuyConfirm | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // ── Multi-select state ────────────────────────────────────────────────────
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
+  const [batchItems, setBatchItems] = useState<BatchEditItem[]>([])
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchSaving, setBatchSaving] = useState(false)
+  const [batchError, setBatchError] = useState<string | null>(null)
 
   // ── Custom cart items ─────────────────────────────────────────────────────
   const [customItems, setCustomItems] = useState<CartItemRow[]>([])
@@ -71,6 +76,7 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
   // ── Instacart ─────────────────────────────────────────────────────────────
   const [instacartLoading, setInstacartLoading] = useState(false)
   const [instacartMsg, setInstacartMsg] = useState<string | null>(null)
+  const instacartMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Checked-items panel toggle ────────────────────────────────────────────
   const [showChecked, setShowChecked] = useState(false)
@@ -80,6 +86,7 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
     return () => {
       mountedRef.current = false
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+      if (instacartMsgTimerRef.current) clearTimeout(instacartMsgTimerRef.current)
     }
   }, [])
 
@@ -102,9 +109,10 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
   // ── Supabase Realtime — sync custom items across household ────────────────
   useEffect(() => {
     const supabase = createClient()
-    const filter = householdId
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const filter = householdId && UUID_RE.test(householdId)
       ? `household_id=eq.${householdId}`
-      : userId ? `user_id=eq.${userId}` : undefined
+      : userId && UUID_RE.test(userId) ? `user_id=eq.${userId}` : undefined
     const channel = supabase
       .channel(`cart_items_${weekStart}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter }, () => {
@@ -198,6 +206,10 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
     setInstacartMsg(null)
     try {
       const res = await fetch(`/api/cart/instacart?weekStart=${weekStart}`)
+      if (!res.ok) {
+        if (mountedRef.current) setInstacartMsg('Could not load list')
+        return
+      }
       const json = await res.json() as { url: string | null; items: { name: string; qty: string }[] }
       if (!mountedRef.current) return
       if (json.url) {
@@ -207,62 +219,134 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
           .map((i) => `• ${i.name}${i.qty ? ` — ${i.qty}` : ''}`)
           .join('\n')
         await navigator.clipboard.writeText(text)
+        if (instacartMsgTimerRef.current) clearTimeout(instacartMsgTimerRef.current)
         setInstacartMsg('Copied for Instacart')
-        setTimeout(() => { if (mountedRef.current) setInstacartMsg(null) }, 3000)
+        instacartMsgTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) setInstacartMsg(null)
+        }, 3000)
       }
     } catch { /* non-fatal */ } finally {
       if (mountedRef.current) setInstacartLoading(false)
     }
   }
 
-  // ── Recipe buy flow ───────────────────────────────────────────────────────
-  function openConfirm(item: ShoppingItem | LowStockItem, isLowStock: boolean) {
-    const si = item as ShoppingItem
-    const ls = item as LowStockItem
-    setConfirm({
-      item,
-      qty: isLowStock ? (ls.min_quantity ?? 1) : (si.buyQty ?? si.neededQty ?? 1),
-      unit: isLowStock ? (ls.unit ?? '') : (si.unit ?? ''),
-      pantryItemId: isLowStock ? ls.id : si.pantryItemId,
-      isLowStock,
+  // ── Multi-select helpers ──────────────────────────────────────────────────
+  function toggleSelected(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
     })
-    setSaveError(null)
   }
 
-  async function handleConfirmBuy() {
-    if (!confirm) return
-    setSaving(true)
-    setSaveError(null)
-    try {
-      const si = confirm.item as ShoppingItem
-      const ls = confirm.item as LowStockItem
-      const name = confirm.isLowStock ? ls.name : si.ingredientName
-
-      const res = await fetch('/api/pantry/mark-bought', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ingredientName: name,
-          quantity: confirm.qty || null,
-          unit: confirm.unit || null,
-          pantryItemId: confirm.pantryItemId,
-        }),
+  function handleOpenBatch() {
+    const items: BatchEditItem[] = []
+    const staleKeys: string[] = []
+    for (const key of selectedKeys) {
+      if (key.startsWith('plan-')) {
+        const name = key.slice(5)
+        const item = shoppingItems.find((i) => i.ingredientName === name)
+        if (item) {
+          items.push({
+            key,
+            name: item.ingredientName,
+            qty: item.buyQty ?? item.neededQty ?? 1,
+            unit: item.unit ?? '',
+            pantryItemId: item.pantryItemId,
+            isLowStock: false,
+          })
+        } else {
+          staleKeys.push(key)
+        }
+      } else if (key.startsWith('low-')) {
+        const id = key.slice(4)
+        const item = lowStockItems.find((i) => i.id === id)
+        if (item) {
+          items.push({
+            key,
+            name: item.name,
+            qty: item.min_quantity ?? 1,
+            unit: item.unit ?? '',
+            pantryItemId: item.id,
+            isLowStock: true,
+          })
+        } else {
+          staleKeys.push(key)
+        }
+      }
+    }
+    if (staleKeys.length > 0) {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev)
+        staleKeys.forEach((k) => next.delete(k))
+        return next
       })
-      const json = await res.json() as { error?: string }
-      if (!res.ok) throw new Error(json.error ?? 'Failed to save')
+    }
+    if (items.length === 0) return
+    setBatchItems(items)
+    setBatchOpen(true)
+    setBatchError(null)
+  }
+
+  async function handleSaveAll() {
+    if (batchSaving || batchItems.length === 0) return
+    const snapshot = batchItems  // capture before any awaits
+    setBatchSaving(true)
+    setBatchError(null)
+
+    // Optimistic: mark all as bought immediately
+    setBought((prev) => new Set([...prev, ...snapshot.map((i) => i.key)]))
+
+    try {
+      const results = await Promise.allSettled(
+        snapshot.map((item) =>
+          fetch('/api/pantry/mark-bought', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ingredientName: item.name,
+              quantity: item.qty > 0 ? item.qty : null,
+              unit: item.unit || null,
+              pantryItemId: item.pantryItemId,
+            }),
+          }).then(async (r) => {
+            if (!r.ok) {
+              const err = await r.json() as { error?: string }
+              throw new Error(err.error ?? `${item.name} failed`)
+            }
+          })
+        )
+      )
+
       if (!mountedRef.current) return
 
-      const key = confirm.isLowStock
-        ? `low-${(confirm.item as LowStockItem).id}`
-        : `plan-${(confirm.item as ShoppingItem).ingredientName}`
-      setBought((prev) => new Set([...prev, key]))
-      setConfirm(null)
-      onBought?.()
-    } catch (err) {
-      if (!mountedRef.current) return
-      setSaveError(String(err))
+      const failedItems = snapshot.filter((_, i) => results[i].status === 'rejected')
+
+      if (failedItems.length > 0) {
+        // Revert only failed items
+        setBought((prev) => {
+          const next = new Set(prev)
+          failedItems.forEach((i) => next.delete(i.key))
+          return next
+        })
+        // Remove succeeded items from selection so they can't be re-submitted
+        const failedKeys = new Set(failedItems.map((i) => i.key))
+        setSelectedKeys((prev) => {
+          const next = new Set(prev)
+          snapshot.forEach((i) => { if (!failedKeys.has(i.key)) next.delete(i.key) })
+          return next
+        })
+        // Drawer shows only failed items for retry
+        setBatchItems(failedItems)
+        setBatchError(`Failed to save: ${failedItems.map((i) => i.name).join(', ')}`)
+      } else {
+        setBatchOpen(false)
+        setSelectedKeys(new Set())
+        onBought?.()
+      }
     } finally {
-      if (mountedRef.current) setSaving(false)
+      if (mountedRef.current) setBatchSaving(false)
     }
   }
 
@@ -341,7 +425,6 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-gray-900">Shopping list</p>
         <div className="flex items-center gap-2">
-          {/* Instacart / copy button */}
           {!allEmpty && (
             <button
               onClick={() => void handleInstacart()}
@@ -362,7 +445,6 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
               {instacartMsg ?? 'Instacart'}
             </button>
           )}
-          {/* Copy list */}
           {!allEmpty && (
             <button
               onClick={() => void navigator.clipboard.writeText(buildCopyText())}
@@ -439,19 +521,32 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                 <div key={section} className="flex flex-col gap-1.5">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">{section}</p>
 
-                  {/* Recipe items */}
+                  {/* Recipe items — multi-select */}
                   {plan.map((item) => {
                     const key = `plan-${item.ingredientName}`
+                    const isSelected = selectedKeys.has(key)
                     return (
                       <div
                         key={key}
-                        className="flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border border-gray-100 shadow-sm"
+                        className={`flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border shadow-sm transition ${
+                          isSelected ? 'border-green-300 bg-green-50' : 'border-gray-100'
+                        }`}
                       >
                         <button
-                          onClick={() => openConfirm(item, false)}
-                          className="w-5 h-5 rounded-md border-2 border-gray-300 hover:border-green-400 flex items-center justify-center shrink-0 transition"
-                          aria-label={`Mark ${item.ingredientName} as bought`}
-                        />
+                          onClick={() => toggleSelected(key)}
+                          className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition ${
+                            isSelected
+                              ? 'bg-green-500 border-green-500'
+                              : 'border-gray-300 hover:border-green-400'
+                          }`}
+                          aria-label={`${isSelected ? 'Deselect' : 'Select'} ${item.ingredientName}`}
+                        >
+                          {isSelected && (
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </button>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium capitalize truncate text-gray-900">
                             {item.ingredientName}
@@ -470,19 +565,32 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                     )
                   })}
 
-                  {/* Low-stock items */}
+                  {/* Low-stock items — multi-select */}
                   {low.map((item) => {
                     const key = `low-${item.id}`
+                    const isSelected = selectedKeys.has(key)
                     return (
                       <div
                         key={key}
-                        className="flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border border-red-100 shadow-sm"
+                        className={`flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border shadow-sm transition ${
+                          isSelected ? 'border-green-300 bg-green-50' : 'border-red-100'
+                        }`}
                       >
                         <button
-                          onClick={() => openConfirm(item, true)}
-                          className="w-5 h-5 rounded-md border-2 border-red-300 hover:border-green-400 flex items-center justify-center shrink-0 transition"
-                          aria-label={`Mark ${item.name} as bought`}
-                        />
+                          onClick={() => toggleSelected(key)}
+                          className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition ${
+                            isSelected
+                              ? 'bg-green-500 border-green-500'
+                              : 'border-red-300 hover:border-green-400'
+                          }`}
+                          aria-label={`${isSelected ? 'Deselect' : 'Select'} ${item.name}`}
+                        >
+                          {isSelected && (
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </button>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate text-gray-900">{item.name}</p>
                           <p className="text-xs text-red-400">
@@ -493,7 +601,7 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                     )
                   })}
 
-                  {/* Custom cart items */}
+                  {/* Custom cart items — quick tap check-off */}
                   {custom.map((item) => (
                     <div
                       key={item.id}
@@ -546,7 +654,6 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
 
               {showChecked && (
                 <div className="flex flex-col gap-1.5">
-                  {/* Checked recipe items */}
                   {Array.from(bought).map((key) => {
                     const isPlan = key.startsWith('plan-')
                     const name = isPlan ? key.slice(5) : key.slice(4)
@@ -561,7 +668,6 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                       </div>
                     )
                   })}
-                  {/* Checked custom items */}
                   {checkedCustom.map((item) => (
                     <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border border-gray-100 opacity-50">
                       <div className="w-5 h-5 rounded-md bg-green-500 flex items-center justify-center shrink-0">
@@ -579,52 +685,93 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
         </div>
       )}
 
-      {/* ── Mark-as-bought confirmation modal ── */}
-      {confirm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setConfirm(null)}>
-          <div
-            className="w-full max-w-lg bg-white rounded-t-3xl p-5 flex flex-col gap-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="font-semibold text-gray-900">
-              Mark as bought — {confirm.isLowStock
-                ? (confirm.item as LowStockItem).name
-                : (confirm.item as ShoppingItem).ingredientName}
-            </p>
-            <p className="text-xs text-gray-500">Confirm how much you bought. This will be added to your pantry.</p>
-
-            <div className="flex gap-2">
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={confirm.qty}
-                onChange={(e) => setConfirm((c) => c ? { ...c, qty: parseFloat(e.target.value) || 0 } : null)}
-                className="flex-1 px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-green-400"
-              />
-              <input
-                value={confirm.unit}
-                onChange={(e) => setConfirm((c) => c ? { ...c, unit: e.target.value } : null)}
-                placeholder="unit"
-                className="w-24 px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-green-400"
-              />
-            </div>
-
-            {saveError && <p className="text-xs text-red-600">{saveError}</p>}
-
-            <div className="flex gap-2">
+      {/* ── Sticky Done bar (shown when items are selected) ── */}
+      {selectedKeys.size > 0 && (
+        <div className="fixed bottom-16 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none">
+          <div className="w-full max-w-lg flex items-center justify-between gap-3 px-4 py-3 bg-gray-900 text-white rounded-2xl shadow-xl pointer-events-auto">
+            <span className="text-sm font-medium">
+              {selectedKeys.size} item{selectedKeys.size !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => setConfirm(null)}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
+                onClick={() => setSelectedKeys(new Set())}
+                className="text-xs text-gray-400 hover:text-gray-200 transition"
               >
                 Cancel
               </button>
               <button
-                onClick={() => void handleConfirmBuy()}
-                disabled={saving}
+                onClick={handleOpenBatch}
+                className="px-4 py-2 bg-green-500 text-white text-sm font-semibold rounded-xl hover:bg-green-400 transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Batch-edit drawer ── */}
+      {batchOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          onClick={() => { if (!batchSaving) { setBatchOpen(false) } }}
+        >
+          <div
+            className="w-full max-w-lg bg-white rounded-t-3xl p-5 flex flex-col gap-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <p className="font-semibold text-gray-900">
+                Add to pantry — {batchItems.length} item{batchItems.length !== 1 ? 's' : ''}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Adjust quantities, then save all at once.</p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {batchItems.map((item, i) => (
+                <div key={item.key} className="flex items-center gap-2">
+                  <span className="flex-1 text-sm font-medium text-gray-900 capitalize truncate">{item.name}</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={item.qty || ''}
+                    disabled={batchSaving}
+                    onChange={(e) => setBatchItems((prev) => prev.map((b, j) =>
+                      j === i ? { ...b, qty: parseFloat(e.target.value) || 0 } : b
+                    ))}
+                    className="w-20 px-2 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-green-400 text-center disabled:opacity-50"
+                  />
+                  <input
+                    value={item.unit}
+                    disabled={batchSaving}
+                    onChange={(e) => setBatchItems((prev) => prev.map((b, j) =>
+                      j === i ? { ...b, unit: e.target.value } : b
+                    ))}
+                    placeholder="unit"
+                    maxLength={50}
+                    className="w-20 px-2 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-green-400 disabled:opacity-50"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {batchError && <p className="text-xs text-red-600">{batchError}</p>}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setBatchOpen(false); setSelectedKeys(new Set()) }}
+                disabled={batchSaving}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleSaveAll()}
+                disabled={batchSaving}
                 className="flex-1 py-3 rounded-2xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-40 transition"
               >
-                {saving ? 'Saving…' : 'Add to pantry'}
+                {batchSaving ? 'Saving…' : `Save ${batchItems.length > 1 ? 'all' : ''}`}
               </button>
             </div>
           </div>
