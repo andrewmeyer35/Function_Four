@@ -18,7 +18,7 @@ export async function GET() {
 
   const query = supabase
     .from('pantry_items')
-    .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category, package_size, package_unit, updated_at')
+    .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category, package_size, package_unit, image_url, updated_at')
     .order('name')
 
   if (householdId) {
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       package_size: body.package_size ?? null,
       package_unit: body.package_unit?.trim() || null,
     })
-    .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category, package_size, package_unit, updated_at')
+    .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category, package_size, package_unit, image_url, updated_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

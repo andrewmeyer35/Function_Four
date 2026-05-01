@@ -14,7 +14,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const allowed = ['quantity', 'min_quantity', 'unit', 'expiration_date', 'category', 'name']
+  const allowed = ['quantity', 'min_quantity', 'unit', 'expiration_date', 'category', 'name', 'image_url']
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]

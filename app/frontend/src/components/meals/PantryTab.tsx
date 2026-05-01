@@ -14,6 +14,7 @@ interface PantryRow {
   category: string | null
   package_size: number | null
   package_unit: string | null
+  image_url: string | null
 }
 
 interface Props {
