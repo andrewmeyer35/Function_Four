@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-04-28 (Session 13 end-of-day)
+Last updated: 2026-04-30 (Session 14)
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
@@ -24,6 +24,13 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
   - `GET /api/recipe-import/history` — fixed missing route (was breaking RecipePicker)
   - `CatalogBrowser`, `CatalogRecipeCard`, `AddToPlanDrawer`, `MissingIngredientsDrawer`
   - `SuggestionsTab.tsx` — catalog section below AI picks; all peer-review fixes applied
+- **Phase 9 (Session 14):** All priorities complete
+  - **P1 — Cart multi-select:** `ShoppingList.tsx` — checkbox multi-select, sticky Done bar, batch-edit drawer, `Promise.all` save, optimistic UI with partial failure revert
+  - **P2 — Pantry photos:** Migration 012 (`image_url TEXT`), `PantryItemCard.tsx` camera upload + thumbnail, `PATCH /api/pantry/[id]` accepts `image_url`, GET/POST pantry routes include `image_url`
+  - **P3 — HistoryTab:** `GET /api/meal-history` (merges meal_photos + confirmed recipe_imports, sorted by date), `HistoryTab.tsx` unified date-grouped timeline (Today/Yesterday/MMM D) with expandable ingredient lists
+  - **P4 — Smarter photo log:** `analyze-photo/route.ts` now fetches pantry (top 30) + weekly meal plan before Claude call, injects as context, replaces ingredients with recipe's exact data if confident dish match (≥0.75)
+  - **Bug fix:** Instagram URL import now returns helpful error + redirects user to screenshot path
+  - **ARCHITECTURE.md** committed to main branch (team onboarding reference, 13 sections)
 - CLAUDE.md — Session Start + End Protocol + Branch & Merge Discipline
 - All peer-review fixes applied; `tsc --noEmit` clean
 
@@ -31,10 +38,10 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 Migration 011 + seed confirmed run. Catalog browse, filter, add-to-plan, and missing-items drawer all verified locally.
 
 ### What is broken / not yet done
-1. **HistoryTab** — still a stub
-2. **Cart UX** — multi-select flow needed (see feedback below)
-3. **Pantry photos** — no image support yet
-4. **Image generation** — not yet built
+1. **Migration 012** — must be run in Supabase SQL Editor before pantry photos work
+2. **pantry-photos Storage bucket** — must be created manually in Supabase Dashboard (see migration 012 header)
+3. **Thursday design session** — no code, full UI/UX audit of every screen
+4. **Remaining backlog items** — see Section 10
 
 ### User feedback from Phase 8 test (implement Phase 9)
 Three specific requests captured after live testing:
@@ -659,6 +666,57 @@ Full meals feature stack built. All code lives in `claude/jolly-euclid` worktree
 
 ---
 
+### Session 14 — Phase 9: Cart multi-select, Pantry photos, HistoryTab, Smarter photo log (2026-04-30)
+
+Completed all 4 Phase 9 priorities plus fixed the Instagram import bug. Session also captured a large new product backlog (Instagram recipe flow, community recipe repository, expiry-driven suggestions, weekly meal plan automation, Switch Up pivot, Auto Instructions, AI dish images).
+
+**Commits:** 6 feature commits + 1 bug fix + 1 ARCHITECTURE.md to main
+
+**P1 — Cart multi-select (`ShoppingList.tsx`):**
+- Replaced single-item confirm modal with checkbox multi-select flow
+- Selected items show filled green checkbox; sticky "N items selected · Done" bar appears
+- Done → batch-edit drawer with qty+unit input per item, all pre-filled
+- "Save all" fires `Promise.all` to `/api/pantry/mark-bought` simultaneously
+- Optimistic UI: items disappear immediately, revert on error
+- Partial failure: reverts failed items, shows only failures in drawer for retry, clears succeeded keys from selection
+- Peer review: stale closure snapshot fix (C1), partial failure key cleanup (C2), instacart `res.ok` check (C3), UUID validation in Realtime filter (W1), `finally` for `batchSaving` (W2), instacartMsg timer ref (W3), inputs disabled during save (W4), stale-key cleanup in handleOpenBatch (W5)
+
+**P2 — Pantry photos:**
+- Migration 012: `ALTER TABLE pantry_items ADD COLUMN IF NOT EXISTS image_url TEXT`
+- `PantryItemCard.tsx`: 40×40 thumbnail (left of card) + camera button overlay
+  - Tap camera → file picker (mobile: opens camera via `capture="environment"`)
+  - Upload to Supabase Storage `pantry-photos/{userId}/{itemId}.ext`, upsert
+  - Cache-bust URL with `?t=timestamp`; PATCH `/api/pantry/[id]` to persist URL
+  - Uploading spinner + inline error
+- `PATCH /api/pantry/[id]`: `image_url` added to allowed fields
+- `GET/POST /api/pantry`: `image_url` included in select
+
+**P3 — HistoryTab:**
+- `GET /api/meal-history`: parallel fetch of `meal_photos` + confirmed `recipe_imports`, merged + sorted by date DESC, returns `HistoryItem[]`
+- `HistoryTab.tsx`: date-grouped timeline (Today / Yesterday / MMM D)
+- Each card: thumbnail if `imageUrl` else type icon (blue for logged meal, green for recipe), title, time-ago, ingredient count badge
+- Tap to expand ingredient list inline
+- Loading, error, and empty states
+
+**P4 — Smarter photo log (`analyze-photo/route.ts`):**
+- Phase 1 (parallel): storage upload + pantry fetch (top 30 by quantity) + meal plan fetch
+- Injects context into Claude prompt: pantry contents string + week's planned meals list
+- Post-processing: if `dishConfidence >= 0.75` and dish name matches a planned meal title → replace Claude's estimated ingredients with recipe's exact `recipe_json.ingredients`
+
+**Bug fix:** Instagram URL import now returns clear error message directing user to Screenshot tab.
+
+**User actions required:**
+1. Run `app/backend/migrations/012_pantry_photos.sql` in Supabase SQL Editor
+2. Create `pantry-photos` bucket in Supabase Dashboard: Storage → New bucket → Name: `pantry-photos`, Public: true
+3. Run this SQL to add RLS policy:
+   ```sql
+   CREATE POLICY "pantry photos open" ON storage.objects
+   FOR ALL USING (bucket_id = 'pantry-photos') WITH CHECK (bucket_id = 'pantry-photos');
+   ```
+4. `npm run dev` and test: cart multi-select in Plan tab, camera button on pantry items, History tab, photo log with a meal that matches this week's plan
+
+---
+
 ### Session 13 — Phase 8: Recipe Catalog (2026-04-28)
 
 Built the complete recipe catalog feature on top of the existing suggestions tab.
@@ -774,6 +832,9 @@ Then add `ANTHROPIC_API_KEY` + `SPOONACULAR_API_KEY` to Vercel environment varia
 - [x] Recipe catalog — 25 curated recipes, pantry-scored, add to plan (Phase 8 complete)
 - [x] Claude API caching — 6h suggestion cache keyed on pantry hash (Phase 7 complete)
 - [ ] History tab — `GET /api/meal-history` + `HistoryTab.tsx` (Phase 9, next)
+- [ ] Cart multi-select UX — batch qty + optimistic UI (Phase 9, next)
+- [ ] Pantry photos — `image_url TEXT`, camera upload, thumbnail card (Phase 9, next)
+- [ ] Smarter photo log — pass pantry + meal plan context to Claude analyze-photo (Phase 9)
 - [ ] LogMealTab pre-fill from Suggestions (`?dishId=` param wiring)
 - [ ] Barcode scan for pantry items (`@zxing/browser` + Open Food Facts)
 - [ ] Receipt OCR import (Mindee API) → auto-add to pantry
@@ -786,6 +847,55 @@ Then add `ANTHROPIC_API_KEY` + `SPOONACULAR_API_KEY` to Vercel environment varia
 - [ ] Price tracking / running cart total in ShoppingList
 - [ ] Presence indicators in ShoppingList ("partner is shopping now")
 - [ ] Merge `claude/jolly-euclid` → `main` + Vercel deployment when stable
+
+### Product features — user-requested (2026-04-30)
+
+**Instagram Recipe Insertion**
+User sees an Instagram story/reel with a recipe → sends screenshot or link to the app.
+- Screenshot path: already works (OCR via ImportRecipeTab). **Note: Instagram Basic Display API is dead (late 2024). No programmatic access to Instagram content.** For stories/reels, user must screenshot → upload image.
+- Enhancement needed: after import, suggest which week it fits into (this week vs next) based on pantry match, expiry items, and grocery shop day preference. Prompt user to add to meal plan immediately after import.
+- If added to this week: show day recommendations + list missing ingredients → offer to add to mid-week cart
+- If added to next week: add to next week's plan + Sunday grocery list
+- Known bug (2026-04-30): URL-based recipe import failed for Instagram URL (blocked by Instagram scraper protection). Fix: detect instagram.com URLs and redirect user to screenshot path with a helpful message.
+
+**Top Recipes / Community Repository**
+- All confirmed recipe_imports go into a shared `catalog_recipes`-style table (or extend existing), tagged as user-contributed vs platform-curated
+- Popularity tracked via `meal_plan_entries` count + `consumption_logs` count
+- Leaderboard by popularity: filter by "My recipes" / "Household" / "All users"
+- Foundation for social recipe discovery within user communities
+- Requires: community privacy model (do users consent to sharing recipes?)
+
+**Smarter Expiry-Driven Recipe Suggestions**
+- Already partially in `meal-suggestions` route (expiry items flagged)
+- Enhancement: if user hasn't logged a planned meal by end of day, app prompts "Did you make [meal]?" 
+  - Yes → confirm as logged; No → suggest replacing/rescheduling
+  - Auto-adjust following weeks if item is skipped repeatedly
+- Limit suggestion frequency: don't nag more than once/day per missed meal
+- Goal: reduce manual plan maintenance
+
+**Meal Plan Weekly Suggestions**
+- Full auto-generated weekly plan based on: food preferences, workout schedule, pantry items, near-expiry items, past consumption patterns, and imported-but-not-cooked recipes
+- Sunday (or user's chosen grocery day) triggers: finalize next week's plan → generate shopping cart
+- Distinguish user-uploaded recipes vs platform catalog in suggestions (prefer user's own imports)
+- Factor in Instagram Recipe Insertions as candidates for the week
+
+**Switch Up / Pivot Feature**
+- "I don't feel like [planned meal] tonight" → suggest alternatives:
+  1. First: another already-planned meal from later in the week (no new ingredients needed)
+  2. Second: new recipe from catalog/imports based on current pantry
+- If switch alters rest-of-week ingredient availability: show quick inline impact summary ("Switching changes Tuesday's Stir Fry — you'll be short on chicken")
+- Frictionless: 2 taps max to swap a meal
+
+**Auto Instructions**
+- For recipes in `recipe_imports` where `recipe_json.steps` is empty or only 1 step:
+  - Call Claude to generate step-by-step cooking instructions from the ingredient list + title
+  - Cache in `recipe_json.steps` — only generate once
+  - Show "AI-generated instructions" badge on the recipe
+
+**AI-Generated Dish Images**
+- For catalog recipes without an `image_url`: call an image generation API to create a plated dish photo
+- Cache the URL in `catalog_recipes.image_url` (migration needed: `ALTER TABLE catalog_recipes ADD COLUMN image_url TEXT`)
+- Show thumbnail in `CatalogRecipeCard` and `HistoryTab`
 
 ### Smart pantry app (future standalone concept)
 - [ ] Apply for Instacart Developer Platform API key
