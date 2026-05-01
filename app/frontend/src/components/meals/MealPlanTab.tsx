@@ -94,8 +94,7 @@ export function MealPlanTab({ userId, householdId }: Props) {
     }
   }, [weekStart])
 
-  useEffect(() => { void loadPlan() }, [loadPlan])
-  useEffect(() => { void loadShoppingList() }, [loadShoppingList])
+  useEffect(() => { void Promise.all([loadPlan(), loadShoppingList()]) }, [loadPlan, loadShoppingList])
 
   async function handleRecipeSelect(recipe: SavedRecipe) {
     if (pickerDay === null) return

@@ -77,6 +77,7 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
   const [instacartLoading, setInstacartLoading] = useState(false)
   const [instacartMsg, setInstacartMsg] = useState<string | null>(null)
   const instacartMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Checked-items panel toggle ────────────────────────────────────────────
   const [showChecked, setShowChecked] = useState(false)
@@ -87,6 +88,7 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
       mountedRef.current = false
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
       if (instacartMsgTimerRef.current) clearTimeout(instacartMsgTimerRef.current)
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current)
     }
   }, [])
 
@@ -116,7 +118,8 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
     const channel = supabase
       .channel(`cart_items_${weekStart}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter }, () => {
-        void fetchCustomItems()
+        if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current)
+        realtimeDebounceRef.current = setTimeout(() => { void fetchCustomItems() }, 300)
       })
       .subscribe()
     return () => { void supabase.removeChannel(channel) }
@@ -299,29 +302,34 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
     setBought((prev) => new Set([...prev, ...snapshot.map((i) => i.key)]))
 
     try {
-      const results = await Promise.allSettled(
-        snapshot.map((item) =>
-          fetch('/api/pantry/mark-bought', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ingredientName: item.name,
-              quantity: item.qty > 0 ? item.qty : null,
-              unit: item.unit || null,
-              pantryItemId: item.pantryItemId,
-            }),
-          }).then(async (r) => {
-            if (!r.ok) {
-              const err = await r.json() as { error?: string }
-              throw new Error(err.error ?? `${item.name} failed`)
-            }
-          })
-        )
-      )
+      const res = await fetch('/api/pantry/mark-bought-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: snapshot.map((item) => ({
+            ingredientName: item.name,
+            quantity: item.qty > 0 ? item.qty : null,
+            unit: item.unit || null,
+            pantryItemId: item.pantryItemId,
+          })),
+        }),
+      })
+
+      const body = await res.json() as { results?: Array<{ ingredientName: string; status: 'ok' | 'error'; error?: string }>; error?: string }
 
       if (!mountedRef.current) return
 
-      const failedItems = snapshot.filter((_, i) => results[i].status === 'rejected')
+      if (!res.ok) {
+        setBought((prev) => {
+          const next = new Set(prev)
+          snapshot.forEach((i) => next.delete(i.key))
+          return next
+        })
+        setBatchError(body.error ?? 'Save failed — please retry')
+        return
+      }
+
+      const failedItems = snapshot.filter((_, i) => (body.results ?? [])[i]?.status === 'error')
 
       if (failedItems.length > 0) {
         // Revert only failed items

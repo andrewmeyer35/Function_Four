@@ -40,14 +40,6 @@ export async function GET(req: NextRequest) {
     .maybeSingle()
   const householdId = membership?.household_id ?? null
 
-  // Fetch meal plan entries with recipe JSON
-  const { data: plan } = await supabase
-    .from('meal_plans')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('week_start', weekStart)
-    .maybeSingle()
-
   const DAY_LABELS = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
   // Track each ingredient with its meal attribution
@@ -57,41 +49,61 @@ export async function GET(req: NextRequest) {
     attributions: string[]
   }>()
 
-  if (plan) {
-    const { data: entries } = await supabase
-      .from('meal_plan_entries')
-      .select('servings, day_of_week, meal_type, recipe_imports!inner(recipe_json)')
-      .eq('meal_plan_id', plan.id)
-      .not('recipe_import_id', 'is', null)
+  // Fetch meal plan entries + pantry in parallel (pantry is independent once householdId is known)
+  const [planEntries, pantryRows] = await Promise.all([
+    (async () => {
+      const { data: plan } = await supabase
+        .from('meal_plans')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('week_start', weekStart)
+        .maybeSingle()
+      if (!plan) return []
+      const { data: entries } = await supabase
+        .from('meal_plan_entries')
+        .select('servings, day_of_week, meal_type, recipe_imports!inner(recipe_json)')
+        .eq('meal_plan_id', plan.id)
+        .not('recipe_import_id', 'is', null)
+      return entries ?? []
+    })(),
+    (async () => {
+      const q = supabase
+        .from('pantry_items')
+        .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category')
+        .order('name')
+      householdId ? q.eq('household_id', householdId) : q.eq('user_id', user.id)
+      const { data } = await q
+      return data ?? []
+    })(),
+  ])
 
-    for (const e of entries ?? []) {
-      const ri = e.recipe_imports as unknown as { recipe_json: RecipeJSON } | null
-      if (!ri?.recipe_json) continue
+  for (const e of planEntries) {
+    const ri = e.recipe_imports as unknown as { recipe_json: RecipeJSON } | null
+    if (!ri?.recipe_json) continue
 
-      const recipe = ri.recipe_json
-      const servings = e.servings as number
-      const scale = recipe.servings && recipe.servings > 0 ? servings / recipe.servings : 1
-      const dayLabel = `${DAY_LABELS[e.day_of_week as number]} ${e.meal_type as string}`
+    const recipe = ri.recipe_json
+    const servings = e.servings as number
+    const scale = recipe.servings && recipe.servings > 0 ? servings / recipe.servings : 1
+    const dayLabel = `${DAY_LABELS[e.day_of_week as number]} ${e.meal_type as string}`
 
-      for (const ing of recipe.ingredients ?? []) {
-        if (ing.isOptional) continue
-        const key = ing.name.toLowerCase().trim()
-        const existing = ingredientsByName.get(key)
-        const scaled = ing.quantity != null ? ing.quantity * scale : null
+    for (const ing of recipe.ingredients ?? []) {
+      if (ing.isOptional) continue
+      const key = ing.name.toLowerCase().trim()
+      const existing = ingredientsByName.get(key)
+      const scaled = ing.quantity != null ? ing.quantity * scale : null
 
-        if (!existing) {
-          ingredientsByName.set(key, {
-            qty: scaled,
-            unit: ing.unit ?? null,
-            attributions: [dayLabel],
-          })
-        } else {
-          ingredientsByName.set(key, {
-            qty: existing.qty != null && scaled != null ? existing.qty + scaled : (existing.qty ?? scaled),
-            unit: existing.unit ?? ing.unit ?? null,
-            attributions: [...existing.attributions, dayLabel],
-          })
-        }
+      if (!existing) {
+        ingredientsByName.set(key, {
+          qty: scaled,
+          unit: ing.unit ?? null,
+          attributions: [dayLabel],
+        })
+      } else {
+        ingredientsByName.set(key, {
+          qty: existing.qty != null && scaled != null ? existing.qty + scaled : (existing.qty ?? scaled),
+          unit: existing.unit ?? ing.unit ?? null,
+          attributions: [...existing.attributions, dayLabel],
+        })
       }
     }
   }
@@ -108,18 +120,6 @@ export async function GET(req: NextRequest) {
   const attributionMap = new Map(
     Array.from(ingredientsByName.entries()).map(([k, v]) => [k, v.attributions])
   )
-
-  // Fetch pantry
-  const pantryQuery = supabase
-    .from('pantry_items')
-    .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category')
-    .order('name')
-  if (householdId) {
-    pantryQuery.eq('household_id', householdId)
-  } else {
-    pantryQuery.eq('user_id', user.id)
-  }
-  const { data: pantryRows } = await pantryQuery
 
   const pantryItems: PantryItem[] = (pantryRows ?? []).map((r) => ({
     id: r.id as string,
