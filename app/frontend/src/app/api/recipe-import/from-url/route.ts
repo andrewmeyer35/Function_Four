@@ -145,6 +145,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'URL must use http or https' }, { status: 400 })
   }
 
+  // Instagram blocks server-side fetches — guide user to screenshot path
+  const hostname = targetUrl.hostname.replace(/^www\./, '')
+  if (hostname === 'instagram.com') {
+    return NextResponse.json({
+      error: 'Instagram links cannot be imported directly (Instagram blocks automated access). Screenshot the recipe in the app instead: tap "Screenshot" tab and upload a photo of the recipe.',
+    }, { status: 422 })
+  }
+
   // Fetch page HTML
   let html: string
   try {
