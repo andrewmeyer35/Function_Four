@@ -21,12 +21,11 @@ function PlusIcon() {
   )
 }
 
-function TargetIcon({ filled }: { filled: boolean }) {
+function ChefHatIcon({ filled }: { filled: boolean }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="5" />
-      <circle cx="12" cy="12" r="1.5" fill={filled ? 'currentColor' : 'none'} stroke="none" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 13.87A4 4 0 017.41 6a5.11 5.11 0 019.18 0 4 4 0 011.41 7.87V20H6z" fill={filled ? 'currentColor' : 'none'} />
+      <line x1="6" y1="17" x2="18" y2="17" />
     </svg>
   )
 }
@@ -63,9 +62,9 @@ const TABS = [
     Icon: () => <PlusIcon />,
   },
   {
-    label: 'Goals',
-    href: '/goals',
-    Icon: ({ active }: { active: boolean }) => <TargetIcon filled={active} />,
+    label: 'Meals',
+    href: '/meals',
+    Icon: ({ active }: { active: boolean }) => <ChefHatIcon filled={active} />,
   },
   {
     label: 'Board',

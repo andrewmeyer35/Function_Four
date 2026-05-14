@@ -109,9 +109,9 @@ export default async function BoardPage() {
     <>
       <main className="px-4 pt-5 pb-24 md:pb-10 md:px-8 md:pt-8 max-w-3xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Board</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            Weekly goal progress - {household.name}
+          <h1 className="text-2xl font-bold text-gray-900">Household Pulse</h1>
+          <p className="text-base text-gray-400 mt-0.5">
+            {household.name} · this week
           </p>
         </div>
 

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { F_CATEGORIES } from '@shared/types'
 import { F_THEME } from '@/lib/design'
@@ -11,13 +11,17 @@ type LocalGoal = {
   is_active: boolean
 }
 
+type GoalSaveStatus =
+  | { kind: 'idle' }
+  | { kind: 'saving' }
+  | { kind: 'saved' }
+  | { kind: 'error'; message: string }
+
 function buildInitialState(initialGoals: UserGoal[]): Record<string, LocalGoal> {
   const map: Record<string, LocalGoal> = {}
-  // Seed defaults for every option
   for (const opt of GOAL_OPTIONS) {
     map[opt.key] = { metric_key: opt.key, target: opt.defaultTarget, is_active: false }
   }
-  // Overlay saved goals from DB
   for (const g of initialGoals) {
     map[g.metric_key] = { metric_key: g.metric_key, target: g.target, is_active: g.is_active }
   }
@@ -29,73 +33,96 @@ export function GoalSetter({ initialGoals }: { initialGoals: UserGoal[] }) {
   const [goals, setGoals] = useState<Record<string, LocalGoal>>(() =>
     buildInitialState(initialGoals)
   )
-  const [saved, setSaved] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [goalStatus, setGoalStatus] = useState<Record<string, GoalSaveStatus>>({})
+
+  // Keep a ref to latest goals so timer callbacks read fresh state
+  const goalsRef = useRef(goals)
+  useEffect(() => { goalsRef.current = goals }, [goals])
+
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const statusTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      Object.values(saveTimers.current).forEach(clearTimeout)
+      Object.values(statusTimers.current).forEach(clearTimeout)
+    }
+  }, [])
+
+  const saveGoal = useCallback(async (key: string, goal: LocalGoal) => {
+    if (!mountedRef.current) return
+    setGoalStatus((prev) => ({ ...prev, [key]: { kind: 'saving' } }))
+    try {
+      const res = await fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(goal),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error ?? `HTTP ${res.status}`)
+      }
+      if (!mountedRef.current) return
+      setGoalStatus((prev) => ({ ...prev, [key]: { kind: 'saved' } }))
+      router.refresh()
+      if (statusTimers.current[key]) clearTimeout(statusTimers.current[key])
+      statusTimers.current[key] = setTimeout(() => {
+        if (mountedRef.current) setGoalStatus((prev) => ({ ...prev, [key]: { kind: 'idle' } }))
+      }, 2000)
+    } catch (err) {
+      if (!mountedRef.current) return
+      setGoalStatus((prev) => ({
+        ...prev,
+        [key]: { kind: 'error', message: err instanceof Error ? err.message : String(err) },
+      }))
+      // Auto-clear error badge after 5 s
+      if (statusTimers.current[key]) clearTimeout(statusTimers.current[key])
+      statusTimers.current[key] = setTimeout(() => {
+        if (mountedRef.current) setGoalStatus((prev) => ({ ...prev, [key]: { kind: 'idle' } }))
+      }, 5000)
+    }
+  }, [router])
+
+  function scheduleSave(key: string) {
+    if (saveTimers.current[key]) clearTimeout(saveTimers.current[key])
+    if (statusTimers.current[key]) clearTimeout(statusTimers.current[key])
+    saveTimers.current[key] = setTimeout(() => {
+      void saveGoal(key, goalsRef.current[key])
+    }, 600)
+  }
 
   function toggle(key: string) {
     setGoals((prev) => ({
       ...prev,
       [key]: { ...prev[key], is_active: !prev[key].is_active },
     }))
-    setSaved(false)
+    scheduleSave(key)
   }
 
-  function setTarget(key: string, delta: number) {
-    const opt = GOAL_OPTIONS.find((g) => g.key === key)!
-    setGoals((prev) => {
-      const current = prev[key].target
-      const next = Math.max(1, Math.min(opt.maxTarget, current + delta))
-      return { ...prev, [key]: { ...prev[key], target: next } }
-    })
-    setSaved(false)
-  }
-
-  async function saveAll() {
-    setIsSaving(true)
-    setSaved(false)
-    setSaveError(null)
-    try {
-      // Send one POST per goal, capture body of any failures
-      const results = await Promise.all(
-        Object.values(goals).map(async (g) => {
-          const res = await fetch('/api/goals', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(g),
-          })
-          if (!res.ok) {
-            const body = await res.json().catch(() => ({}))
-            return { ok: false as const, error: body.error ?? `HTTP ${res.status}` }
-          }
-          return { ok: true as const }
-        })
-      )
-      const failed = results.filter((r) => !r.ok)
-      if (failed.length >= 1) {
-        const msg = failed[0].ok === false ? failed[0].error : 'unknown error'
-        setSaveError(`Save failed: ${msg}`)
-      } else {
-        setSaved(true)
-        router.refresh()
-      }
-    } catch (err) {
-      setSaveError(`Network error: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setIsSaving(false)
-    }
+  function setTarget(key: string, value: number) {
+    const opt = GOAL_OPTIONS.find((g) => g.key === key)
+    if (!opt) return
+    const clamped = Math.max(1, Math.min(opt.maxTarget, value))
+    setGoals((prev) => ({ ...prev, [key]: { ...prev[key], target: clamped } }))
+    scheduleSave(key)
   }
 
   const activeCount = Object.values(goals).filter((g) => g.is_active).length
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-4">
+      <p className="text-xs text-gray-400 px-1">
+        <span className="font-semibold text-gray-700">{activeCount}</span> active goal{activeCount !== 1 ? 's' : ''}
+        {' · '}changes save automatically
+      </p>
+
       {F_CATEGORIES.map((f) => {
         const theme = F_THEME[f.key]
         const opts = GOAL_OPTIONS.filter((o) => o.category === f.key)
         return (
           <div key={f.key} className="surface-card rounded-2xl overflow-hidden">
-            {/* Category header */}
             <div
               className="px-4 py-3 flex items-center gap-2"
               style={{ background: `linear-gradient(135deg, ${theme.from}18, ${theme.to}10)` }}
@@ -107,19 +134,19 @@ export function GoalSetter({ initialGoals }: { initialGoals: UserGoal[] }) {
               </div>
             </div>
 
-            {/* Goal rows */}
             <div className="divide-y divide-gray-100">
               {opts.map((opt) => {
                 const g = goals[opt.key]
+                const status = goalStatus[opt.key] ?? { kind: 'idle' }
                 return (
                   <GoalRow
                     key={opt.key}
                     opt={opt}
                     goal={g}
                     themeColor={theme.from}
+                    status={status}
                     onToggle={() => toggle(opt.key)}
-                    onDecrement={() => setTarget(opt.key, -1)}
-                    onIncrement={() => setTarget(opt.key, 1)}
+                    onSetTarget={(val) => setTarget(opt.key, val)}
                   />
                 )
               })}
@@ -127,25 +154,6 @@ export function GoalSetter({ initialGoals }: { initialGoals: UserGoal[] }) {
           </div>
         )
       })}
-
-      {/* Save bar */}
-      <div className="sticky bottom-20 md:bottom-4 bg-white/95 backdrop-blur rounded-2xl border border-gray-100 shadow-lg px-4 py-3 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-gray-600">
-            <span className="font-bold text-gray-900">{activeCount}</span> active goal{activeCount !== 1 ? 's' : ''}
-          </p>
-          {saveError && (
-            <p className="text-[11px] text-red-500 mt-0.5">{saveError}</p>
-          )}
-        </div>
-        <button
-          onClick={saveAll}
-          disabled={isSaving}
-          className="px-5 py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-opacity tap-scale"
-        >
-          {saved ? '✓ Saved' : isSaving ? 'Saving…' : 'Save goals'}
-        </button>
-      </div>
     </div>
   )
 }
@@ -154,20 +162,20 @@ function GoalRow({
   opt,
   goal,
   themeColor,
+  status,
   onToggle,
-  onDecrement,
-  onIncrement,
+  onSetTarget,
 }: {
   opt: GoalOption
   goal: LocalGoal
   themeColor: string
+  status: GoalSaveStatus
   onToggle: () => void
-  onDecrement: () => void
-  onIncrement: () => void
+  onSetTarget: (val: number) => void
 }) {
   return (
-    <div className={`px-4 py-3 flex items-center gap-3 transition-colors ${goal.is_active ? '' : 'opacity-50'}`}>
-      {/* Toggle */}
+    <div className="px-4 py-3 flex items-center gap-3 transition-colors">
+      {/* Toggle — always full opacity */}
       <button
         onClick={onToggle}
         className="flex-shrink-0 w-10 h-6 rounded-full relative transition-colors duration-200 tap-scale"
@@ -180,35 +188,46 @@ function GoalRow({
         />
       </button>
 
-      {/* Label */}
+      {/* Label — always full opacity so inactive goals remain readable */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900">
-          {opt.emoji} {opt.label}
-        </p>
-        <p className="text-[11px] text-gray-400">
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium text-gray-900 truncate">
+            {opt.emoji} {opt.label}
+          </p>
+          {status.kind === 'saving' && (
+            <span className="flex-shrink-0 w-3 h-3 rounded-full border-2 border-gray-300 border-t-transparent animate-spin" />
+          )}
+          {status.kind === 'saved' && (
+            <span className="flex-shrink-0 text-[11px] font-bold" style={{ color: themeColor }}>✓</span>
+          )}
+          {status.kind === 'error' && (
+            <span className="flex-shrink-0 text-[11px] text-red-500" title={status.message}>!</span>
+          )}
+        </div>
+        <p className={`text-[11px] mt-0.5 transition-colors ${goal.is_active ? 'text-gray-400' : 'text-gray-300'}`}>
           {goal.target} {opt.unit} / week
         </p>
       </div>
 
-      {/* Stepper */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <button
-          onClick={onDecrement}
-          disabled={!goal.is_active || goal.target <= 1}
-          className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center disabled:opacity-30 tap-scale"
-        >
-          −
-        </button>
-        <span className="w-6 text-center text-sm font-bold text-gray-900 tabular-nums">
+      {/* Range slider — dimmed + locked when inactive */}
+      <div
+        className={`flex items-center gap-2 flex-shrink-0 w-28 transition-opacity ${
+          goal.is_active ? 'opacity-100' : 'opacity-30 pointer-events-none'
+        }`}
+      >
+        <input
+          type="range"
+          min={1}
+          max={opt.maxTarget}
+          value={goal.target}
+          onChange={(e) => onSetTarget(Number(e.target.value))}
+          className="flex-1 cursor-pointer"
+          style={{ accentColor: themeColor }}
+          aria-label={`${opt.label} weekly target`}
+        />
+        <span className="text-sm font-bold text-gray-900 tabular-nums w-4 text-right">
           {goal.target}
         </span>
-        <button
-          onClick={onIncrement}
-          disabled={!goal.is_active || goal.target >= opt.maxTarget}
-          className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center disabled:opacity-30 tap-scale"
-        >
-          +
-        </button>
       </div>
     </div>
   )

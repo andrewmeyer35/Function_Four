@@ -52,8 +52,9 @@ export function Ring({
             cy={size / 2}
             r={r}
             fill="none"
-            stroke="rgba(0,0,0,0.06)"
+            stroke={grad.from}
             strokeWidth={stroke}
+            opacity={0.15}
           />
         )}
         <circle
