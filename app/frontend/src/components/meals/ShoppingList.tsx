@@ -4,6 +4,64 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getStoreSection, SECTION_ORDER } from '@/lib/meals/storeSection'
 import type { CartItemRow } from '@/app/api/cart/route'
+import { ReceiptScanner } from './ReceiptScanner'
+
+// Standard store package sizes for common ingredients
+const STORE_UNITS: Record<string, { pkg: string; pkgQty: number; pkgUnit: string }> = {
+  egg:                { pkg: 'dozen',        pkgQty: 12,   pkgUnit: ''    },
+  eggs:               { pkg: 'dozen',        pkgQty: 12,   pkgUnit: ''    },
+  milk:               { pkg: 'half-gallon',  pkgQty: 64,   pkgUnit: 'oz'  },
+  butter:             { pkg: '1-lb box',     pkgQty: 4,    pkgUnit: 'sticks' },
+  'all-purpose flour':{ pkg: '5-lb bag',     pkgQty: 80,   pkgUnit: 'oz'  },
+  flour:              { pkg: '5-lb bag',     pkgQty: 80,   pkgUnit: 'oz'  },
+  sugar:              { pkg: '4-lb bag',     pkgQty: 64,   pkgUnit: 'oz'  },
+  salt:               { pkg: '26-oz canister',pkgQty: 26,  pkgUnit: 'oz'  },
+  'olive oil':        { pkg: '16-oz bottle', pkgQty: 16,   pkgUnit: 'oz'  },
+  'vegetable oil':    { pkg: '32-oz bottle', pkgQty: 32,   pkgUnit: 'oz'  },
+  'chicken breast':   { pkg: 'family pack',  pkgQty: 3,    pkgUnit: 'lbs' },
+  'chicken breasts':  { pkg: 'family pack',  pkgQty: 3,    pkgUnit: 'lbs' },
+  'ground beef':      { pkg: '1-lb pack',    pkgQty: 1,    pkgUnit: 'lb'  },
+  'ground turkey':    { pkg: '1-lb pack',    pkgQty: 1,    pkgUnit: 'lb'  },
+  'heavy cream':      { pkg: 'pint',         pkgQty: 16,   pkgUnit: 'oz'  },
+  'sour cream':       { pkg: '16-oz tub',    pkgQty: 16,   pkgUnit: 'oz'  },
+  'cream cheese':     { pkg: '8-oz block',   pkgQty: 8,    pkgUnit: 'oz'  },
+  'shredded cheese':  { pkg: '8-oz bag',     pkgQty: 8,    pkgUnit: 'oz'  },
+  cheese:             { pkg: '8-oz block',   pkgQty: 8,    pkgUnit: 'oz'  },
+  pasta:              { pkg: '1-lb box',     pkgQty: 16,   pkgUnit: 'oz'  },
+  rice:               { pkg: '2-lb bag',     pkgQty: 32,   pkgUnit: 'oz'  },
+  'chicken broth':    { pkg: '32-oz carton', pkgQty: 32,   pkgUnit: 'oz'  },
+  'beef broth':       { pkg: '32-oz carton', pkgQty: 32,   pkgUnit: 'oz'  },
+  'tomato paste':     { pkg: '6-oz can',     pkgQty: 6,    pkgUnit: 'oz'  },
+  'diced tomatoes':   { pkg: '14.5-oz can',  pkgQty: 14.5, pkgUnit: 'oz'  },
+  'coconut milk':     { pkg: '13.5-oz can',  pkgQty: 13.5, pkgUnit: 'oz'  },
+  'black beans':      { pkg: '15-oz can',    pkgQty: 15,   pkgUnit: 'oz'  },
+  'chickpeas':        { pkg: '15-oz can',    pkgQty: 15,   pkgUnit: 'oz'  },
+  'garbanzo beans':   { pkg: '15-oz can',    pkgQty: 15,   pkgUnit: 'oz'  },
+  lemon:              { pkg: 'bag of 3',     pkgQty: 3,    pkgUnit: ''    },
+  lemons:             { pkg: 'bag of 3',     pkgQty: 3,    pkgUnit: ''    },
+  lime:               { pkg: 'bag of 5',     pkgQty: 5,    pkgUnit: ''    },
+  limes:              { pkg: 'bag of 5',     pkgQty: 5,    pkgUnit: ''    },
+  onion:              { pkg: 'bag of 3',     pkgQty: 3,    pkgUnit: ''    },
+  onions:             { pkg: 'bag of 3',     pkgQty: 3,    pkgUnit: ''    },
+}
+
+function getPurchaseSuggestion(name: string, buyQty: number | null, unit: string | null): string | null {
+  if (buyQty == null) return null
+  const key = name.toLowerCase().trim()
+  const info = STORE_UNITS[key]
+  if (!info) return null
+  // Only suggest if units are compatible or no unit on the item
+  const itemUnit = unit?.toLowerCase().trim() ?? ''
+  const pkgUnit = info.pkgUnit.toLowerCase()
+  const unitsMatch = !itemUnit || !pkgUnit || itemUnit === pkgUnit || itemUnit === pkgUnit.replace(/s$/, '')
+  if (!unitsMatch) return null
+  const pkgsNeeded = Math.ceil(buyQty / info.pkgQty)
+  const usesFraction = buyQty < info.pkgQty
+    ? `uses ${buyQty} of ${info.pkgQty}${info.pkgUnit ? ` ${info.pkgUnit}` : ''}`
+    : buyQty === info.pkgQty ? 'uses the whole pack' : `uses ${(buyQty / info.pkgQty).toFixed(1)} packs`
+  const pkgLabel = pkgsNeeded === 1 ? `1 ${info.pkg}` : `${pkgsNeeded} × ${info.pkg}`
+  return `Buy ${pkgLabel} · ${usesFraction}`
+}
 
 export interface ShoppingItem {
   ingredientName: string
@@ -81,6 +139,9 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
 
   // ── Checked-items panel toggle ────────────────────────────────────────────
   const [showChecked, setShowChecked] = useState(false)
+
+  // ── Receipt scanner ───────────────────────────────────────────────────────
+  const [scannerOpen, setScannerOpen] = useState(false)
 
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -366,6 +427,10 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
     const groups = new Map<string, { plan: ShoppingItem[]; low: LowStockItem[]; custom: CartItemRow[] }>()
     for (const s of SECTION_ORDER) groups.set(s, { plan: [], low: [], custom: [] })
 
+    // Build normalized name sets for deduplication
+    const planNames = new Set(shoppingItems.map((s) => s.ingredientName.toLowerCase().trim()))
+    const lowNames = new Set(lowStockItems.map((s) => s.name.toLowerCase().trim()))
+
     for (const item of shoppingItems) {
       if (bought.has(`plan-${item.ingredientName}`)) continue
       const s = getStoreSection(item.ingredientName)
@@ -373,10 +438,15 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
     }
     for (const item of lowStockItems) {
       if (bought.has(`low-${item.id}`)) continue
+      // Skip if already covered by a meal plan item
+      if (planNames.has(item.name.toLowerCase().trim())) continue
       const s = getStoreSection(item.name)
       groups.get(s)!.low.push(item)
     }
     for (const item of uncheckedCustom) {
+      const norm = item.name.toLowerCase().trim()
+      // Skip if already covered by a meal plan or low-stock item
+      if (planNames.has(norm) || lowNames.has(norm)) continue
       const s = getStoreSection(item.name)
       groups.get(s)!.custom.push(item)
     }
@@ -433,6 +503,18 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-gray-900">Shopping list</p>
         <div className="flex items-center gap-2">
+          {/* Receipt scanner */}
+          <button
+            onClick={() => setScannerOpen(true)}
+            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition"
+            title="Scan receipt to remove bought items"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+            Scan
+          </button>
           {!allEmpty && (
             <button
               onClick={() => void handleInstacart()}
@@ -530,16 +612,22 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">{section}</p>
 
                   {/* Recipe items — multi-select */}
+                  {plan.length > 0 && (
+                    <p className="text-[11px] font-semibold text-green-700 uppercase tracking-wide px-1 mt-0.5">This week's meals</p>
+                  )}
                   {plan.map((item) => {
                     const key = `plan-${item.ingredientName}`
                     const isSelected = selectedKeys.has(key)
+                    const purchaseSuggestion = getPurchaseSuggestion(item.ingredientName, item.buyQty, item.unit)
                     return (
                       <div
                         key={key}
-                        className={`flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border shadow-sm transition ${
+                        className={`flex items-center gap-3 pl-0 pr-3 py-2.5 bg-white rounded-xl border shadow-sm transition overflow-hidden ${
                           isSelected ? 'border-green-300 bg-green-50' : 'border-gray-100'
                         }`}
                       >
+                        {/* Green left accent */}
+                        <div className="w-1 self-stretch bg-green-400 rounded-l-xl shrink-0" />
                         <button
                           onClick={() => toggleSelected(key)}
                           className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition ${
@@ -561,35 +649,43 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                           </p>
                           <p className="text-xs text-gray-400">
                             {item.buyQty != null
-                              ? `Buy ${item.buyQty}${item.unit ? ` ${item.unit}` : ''}`
+                              ? `Need ${item.buyQty}${item.unit ? ` ${item.unit}` : ''}`
                               : 'Add to cart'}
                             {item.haveQty > 0 ? ` · have ${item.haveQty}` : ''}
                             {item.mealAttribution.length > 0 && (
                               <span className="text-gray-300"> · {item.mealAttribution.join(', ')}</span>
                             )}
                           </p>
+                          {purchaseSuggestion && (
+                            <p className="text-xs text-green-600 font-medium mt-0.5">{purchaseSuggestion}</p>
+                          )}
                         </div>
                       </div>
                     )
                   })}
 
                   {/* Low-stock items — multi-select */}
+                  {low.length > 0 && (
+                    <p className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide px-1 mt-0.5">Running low</p>
+                  )}
                   {low.map((item) => {
                     const key = `low-${item.id}`
                     const isSelected = selectedKeys.has(key)
                     return (
                       <div
                         key={key}
-                        className={`flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border shadow-sm transition ${
-                          isSelected ? 'border-green-300 bg-green-50' : 'border-red-100'
+                        className={`flex items-center gap-3 pl-0 pr-3 py-2.5 bg-white rounded-xl border shadow-sm transition overflow-hidden ${
+                          isSelected ? 'border-green-300 bg-green-50' : 'border-amber-100'
                         }`}
                       >
+                        {/* Amber left accent */}
+                        <div className="w-1 self-stretch bg-amber-400 rounded-l-xl shrink-0" />
                         <button
                           onClick={() => toggleSelected(key)}
                           className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition ${
                             isSelected
                               ? 'bg-green-500 border-green-500'
-                              : 'border-red-300 hover:border-green-400'
+                              : 'border-amber-300 hover:border-green-400'
                           }`}
                           aria-label={`${isSelected ? 'Deselect' : 'Select'} ${item.name}`}
                         >
@@ -601,7 +697,7 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                         </button>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate text-gray-900">{item.name}</p>
-                          <p className="text-xs text-red-400">
+                          <p className="text-xs text-amber-600">
                             Low stock — {item.quantity ?? 0}{item.unit ? ` ${item.unit}` : ''} left
                           </p>
                         </div>
@@ -610,20 +706,25 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
                   })}
 
                   {/* Custom cart items — quick tap check-off */}
+                  {custom.length > 0 && (
+                    <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wide px-1 mt-0.5">Added by you</p>
+                  )}
                   {custom.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border border-indigo-100 shadow-sm"
+                      className="flex items-center gap-3 pl-0 pr-3 py-2.5 bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden"
                     >
+                      {/* Blue left accent */}
+                      <div className="w-1 self-stretch bg-blue-400 rounded-l-xl shrink-0" />
                       <button
                         onClick={() => void handleCheckCustom(item)}
-                        className="w-5 h-5 rounded-md border-2 border-indigo-300 hover:border-green-400 flex items-center justify-center shrink-0 transition"
+                        className="w-5 h-5 rounded-md border-2 border-blue-300 hover:border-green-400 flex items-center justify-center shrink-0 transition"
                         aria-label={`Mark ${item.name} as got`}
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate text-gray-900">{item.name}</p>
                         {(item.quantity != null || item.unit) && (
-                          <p className="text-xs text-indigo-400">
+                          <p className="text-xs text-blue-400">
                             {item.quantity != null ? item.quantity : ''}{item.unit ? ` ${item.unit}` : ''}
                           </p>
                         )}
@@ -797,6 +898,14 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
             Undo
           </button>
         </div>
+      )}
+
+      {/* ── Receipt scanner drawer ── */}
+      {scannerOpen && (
+        <ReceiptScanner
+          onClose={() => setScannerOpen(false)}
+          onRemoved={() => { void fetchCustomItems(); onBought?.() }}
+        />
       )}
     </div>
   )

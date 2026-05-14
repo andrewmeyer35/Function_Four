@@ -20,16 +20,31 @@ interface Props {
   onRemove: (entryId: string) => void
 }
 
+const MEAL_COLORS: Record<string, { bg: string; border: string; dot: string; label: string }> = {
+  breakfast: { bg: 'bg-amber-50',  border: 'border-amber-200',  dot: 'bg-amber-400',  label: 'Breakfast' },
+  lunch:     { bg: 'bg-blue-50',   border: 'border-blue-200',   dot: 'bg-blue-400',   label: 'Lunch'     },
+  dinner:    { bg: 'bg-green-50',  border: 'border-green-200',  dot: 'bg-green-400',  label: 'Dinner'    },
+  snack:     { bg: 'bg-purple-50', border: 'border-purple-200', dot: 'bg-purple-400', label: 'Snack'     },
+}
+const DEFAULT_COLORS = { bg: 'bg-white', border: 'border-gray-100', dot: 'bg-gray-300', label: '' }
+
 export function MealPlanDay({ dayLabel, dayIndex, entry, onAdd, onRemove }: Props) {
   const recipe = entry?.recipe_imports?.recipe_json
   const title = recipe?.title ?? entry?.custom_dish_name ?? null
+  const colors = MEAL_COLORS[entry?.meal_type ?? ''] ?? DEFAULT_COLORS
 
   return (
     <div className="flex flex-col gap-1.5 min-w-0">
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{dayLabel}</p>
 
       {title ? (
-        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm px-3 py-2.5 min-h-[72px]">
+        <div className={`relative ${colors.bg} rounded-2xl border ${colors.border} shadow-sm px-3 py-2.5 min-h-[72px]`}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${colors.dot}`} />
+            {colors.label && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{colors.label}</span>
+            )}
+          </div>
           <p className="text-xs font-semibold text-gray-900 leading-snug pr-5 truncate">{title}</p>
           <p className="text-xs text-gray-400 mt-0.5">
             {entry?.servings ?? 2} servings
