@@ -24,12 +24,15 @@ Files changed this session:
 - `app/frontend/src/app/api/cart/receipt/route.ts` — new route: multipart upload, Claude vision, fuzzy match against cart, returns ReceiptMatch[]
 
 Exact next action:
-> Implement T2-3 (Board contribution badges), T2-4 (streak grace period in WeeklyTracker), T2-6 (vibe badge tooltip in LifeScoreHero), then Tier 3 items
+> Implement the plan at `C:\Users\andre\.claude\plans\lets-build-out-option-sleepy-pretzel.md`
+> Part 1: Receipt scanner → pantry (receipt/route.ts + ReceiptScanner.tsx)
+> Part 2: Codebase review fixes (analyze-photo timeout, meal-suggestions timeout, MealPlanTab/SuggestionsTab/LogMealTab/PantryTab lifecycle, extract getWeekStart utility)
 
 Blockers / notes:
 - Migration 012 still needs to be run manually in Supabase SQL Editor before pantry photos work
 - pantry-photos Storage bucket still needs to be created manually in Supabase Dashboard
-- UX design spec plan at `C:\Users\andre\.claude\plans\read-progress-md-and-develope-atomic-lampson.md` — refer to it for remaining T2/T3 items
+- Plan file: `C:\Users\andre\.claude\plans\lets-build-out-option-sleepy-pretzel.md` — full spec for Part 1 + Part 2
+- UX design spec plan at `C:\Users\andre\.claude\plans\read-progress-md-and-develope-atomic-lampson.md` — refer to it for remaining T2/T3 items (T2-3 badges, T2-4 streak grace, T2-6 vibe tooltip)
 
 ### What is done (all committed to `claude/jolly-euclid`)
 - Migrations 005–010 committed to branch
@@ -124,14 +127,16 @@ Changes needed:
 - Produce a design spec / decision log for implementing in a follow-up session
 - Topics to cover: meals tab information density, pantry card layout, suggestion card visual polish, onboarding flow, profile page
 
-### Next session priorities (2026-04-29)
+### Next session priorities (2026-05-13)
 | Priority | Goal | Scope |
 |----------|------|-------|
-| **1 — Must** | Cart multi-select UX | `ShoppingList.tsx` refactor + optimistic updates |
-| **2 — Must** | Pantry photos | Migration 012, PantryItemCard camera, Supabase Storage upload |
-| **3 — Should** | HistoryTab | `GET /api/meal-history` + `HistoryTab.tsx` |
-| **4 — Nice** | Smarter photo log | Pass pantry + meal plan as context to Claude in analyze-photo; pre-populate ingredients from matched plan entry |
-| **Thu** | UI/UX design session | No code — audit + spec only |
+| **1 — Must** | Receipt scanner → pantry | `receipt/route.ts` + `ReceiptScanner.tsx` — see plan Part 1 |
+| **2 — Must** | API timeout fixes | `analyze-photo/route.ts` + `meal-suggestions/route.ts` — see plan Part 2 |
+| **3 — Must** | Component lifecycle fixes | `MealPlanTab`, `SuggestionsTab`, `LogMealTab`, `PantryTab` — mountedRef + AbortController |
+| **4 — Should** | Extract getWeekStart utility | New `src/lib/meals/utils.ts`, update 3 callers |
+| **5 — Nice** | T2-3/T2-4/T2-6 UX items | Board badges, streak grace period, vibe badge tooltip |
+
+**Plan file for items 1–4:** `C:\Users\andre\.claude\plans\lets-build-out-option-sleepy-pretzel.md`
 
 ### Pickup checklist for next session
 ```
