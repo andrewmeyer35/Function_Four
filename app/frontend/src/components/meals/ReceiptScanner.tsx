@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { ReceiptMatch } from '@/app/api/cart/receipt/route'
 
 interface Props {
@@ -16,25 +16,51 @@ type Stage =
   | { kind: 'done'; count: number }
   | { kind: 'error'; message: string }
 
-const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
 
 export function ReceiptScanner({ onClose, onRemoved }: Props) {
   const [stage, setStage] = useState<Stage>({ kind: 'idle' })
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
+  const mountedRef = useRef(true)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      abortRef.current?.abort()
+    }
+  }, [])
 
   async function handleFile(file: File) {
+    if (!(ACCEPTED as readonly string[]).includes(file.type as typeof ACCEPTED[number])) {
+      setStage({ kind: 'error', message: 'Please choose a JPEG, PNG, WebP, or GIF image.' })
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setStage({ kind: 'error', message: 'Image is too large (max 10 MB).' })
+      return
+    }
+    const controller = new AbortController()
+    abortRef.current = controller
     setStage({ kind: 'loading' })
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch('/api/cart/receipt', { method: 'POST', body: form })
+      const res = await fetch('/api/cart/receipt', {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      })
       const json = await res.json() as { matches?: ReceiptMatch[]; error?: string }
+      if (!mountedRef.current) return
       if (!res.ok) throw new Error(json.error ?? 'Unknown error')
       const matches = json.matches ?? []
       setCheckedIds(new Set(matches.map((m) => m.cartItemId)))
       setStage({ kind: 'review', matches })
     } catch (err) {
+      if (!mountedRef.current) return
+      if (err instanceof Error && err.name === 'AbortError') return
       setStage({ kind: 'error', message: err instanceof Error ? err.message : 'Could not read receipt' })
     }
   }
@@ -50,14 +76,20 @@ export function ReceiptScanner({ onClose, onRemoved }: Props) {
 
   async function handleRemove() {
     if (stage.kind !== 'review' || checkedIds.size === 0) return
+    const controller = new AbortController()
+    abortRef.current = controller
     setStage({ kind: 'removing' })
     let removed = 0
     for (const id of checkedIds) {
       try {
-        const res = await fetch(`/api/cart/${id}`, { method: 'DELETE' })
+        const res = await fetch(`/api/cart/${id}`, { method: 'DELETE', signal: controller.signal })
         if (res.ok) removed++
-      } catch { /* non-fatal */ }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        // non-fatal — continue with remaining items
+      }
     }
+    if (!mountedRef.current) return
     setStage({ kind: 'done', count: removed })
     onRemoved()
   }

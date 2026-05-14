@@ -50,10 +50,11 @@ function getPurchaseSuggestion(name: string, buyQty: number | null, unit: string
   const key = name.toLowerCase().trim()
   const info = STORE_UNITS[key]
   if (!info) return null
-  // Only suggest if units are compatible or no unit on the item
+  // Only suggest if units are compatible; unit-less items only match unit-less packages (countable items)
   const itemUnit = unit?.toLowerCase().trim() ?? ''
   const pkgUnit = info.pkgUnit.toLowerCase()
-  const unitsMatch = !itemUnit || !pkgUnit || itemUnit === pkgUnit || itemUnit === pkgUnit.replace(/s$/, '')
+  const unitsMatch = !pkgUnit || // package has no unit (eggs, lemons, onions) → always show
+    (!!itemUnit && (itemUnit === pkgUnit || itemUnit === pkgUnit.replace(/s$/, '')))
   if (!unitsMatch) return null
   const pkgsNeeded = Math.ceil(buyQty / info.pkgQty)
   const usesFraction = buyQty < info.pkgQty
@@ -423,13 +424,15 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
   const uncheckedCustom = customItems.filter((i) => !i.checked_at)
   const checkedCustom = customItems.filter((i) => !!i.checked_at)
 
+  function stemLower(s: string) { return s.toLowerCase().trim().replace(/s$/, '') }
+
   function buildSections() {
     const groups = new Map<string, { plan: ShoppingItem[]; low: LowStockItem[]; custom: CartItemRow[] }>()
     for (const s of SECTION_ORDER) groups.set(s, { plan: [], low: [], custom: [] })
 
-    // Build normalized name sets for deduplication
-    const planNames = new Set(shoppingItems.map((s) => s.ingredientName.toLowerCase().trim()))
-    const lowNames = new Set(lowStockItems.map((s) => s.name.toLowerCase().trim()))
+    // Stemmed sets for deduplication (handles singular/plural divergence)
+    const planStems = new Set(shoppingItems.map((s) => stemLower(s.ingredientName)))
+    const lowStems  = new Set(lowStockItems.map((s) => stemLower(s.name)))
 
     for (const item of shoppingItems) {
       if (bought.has(`plan-${item.ingredientName}`)) continue
@@ -438,15 +441,15 @@ export function ShoppingList({ shoppingItems, lowStockItems, weekStart, userId, 
     }
     for (const item of lowStockItems) {
       if (bought.has(`low-${item.id}`)) continue
-      // Skip if already covered by a meal plan item
-      if (planNames.has(item.name.toLowerCase().trim())) continue
+      // Skip if already covered by a meal plan item (stem match)
+      if (planStems.has(stemLower(item.name))) continue
       const s = getStoreSection(item.name)
       groups.get(s)!.low.push(item)
     }
     for (const item of uncheckedCustom) {
-      const norm = item.name.toLowerCase().trim()
-      // Skip if already covered by a meal plan or low-stock item
-      if (planNames.has(norm) || lowNames.has(norm)) continue
+      const stem = stemLower(item.name)
+      // Skip if already covered by a meal plan or low-stock item (stem match)
+      if (planStems.has(stem) || lowStems.has(stem)) continue
       const s = getStoreSection(item.name)
       groups.get(s)!.custom.push(item)
     }
