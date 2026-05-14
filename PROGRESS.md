@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-04-30 (Session 14)
+Last updated: 2026-05-13 (Session 16)
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
@@ -11,6 +11,32 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 ## ⚡ START HERE — read this first, then say "continue"
 
 **Branch:** `claude/jolly-euclid` · **Worktree:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`
+**Session ended:** 2026-05-13 (Session 16)
+
+### 🟢 READY TO CONTINUE — Phase 11 complete, committed
+Task: UX research-backed design improvements
+Status: All Tier 1 + T2-1 + T2-2 + T2-5 complete and committed (commit b27e3d3)
+
+Files changed this session:
+- `app/frontend/src/components/ui/WeeklyTracker.tsx` — T2-1 progressive disclosure (collapsed categories, today's checkbox), T1-1 typography
+- `app/frontend/src/components/ui/Ring.tsx` — T1-3 soft ring tracks (category color 15% opacity)
+- `app/frontend/src/components/ui/LifeScoreHero.tsx` — T1-2 streak amber, T1-3 soft tracks, T2-5 affirmation labels (Starting/Building/Halfway/Almost/Done)
+- `app/frontend/src/components/ui/BoardClient.tsx` — T1-4 removed rank medals, new empty state copy
+- `app/frontend/src/app/(app)/board/page.tsx` — T1-4 "Board" → "Household Pulse"
+- `app/frontend/src/components/meals/HistoryTab.tsx` — T1-5 empty state copy, T1-1 typography, AbortController, timezone fix
+- `app/frontend/src/components/meals/SuggestionsTab.tsx` — T1-5 empty state copy, T1-1 typography, AbortController
+- `app/frontend/src/components/meals/MealsTabs.tsx` — T1-6 "Log Meal"→"Log", T2-2 removed Import tab (6→5 tabs)
+- `app/frontend/src/components/meals/MealsClient.tsx` — T2-2 legacy ?tab=import → plan, type-safe Tab cast
+- `app/frontend/src/components/meals/MealPlanTab.tsx` — T2-2 embedded ImportRecipeTab collapsible section, W1/W2 error handling
+- `app/frontend/src/components/meals/ImportRecipeTab.tsx` — `embedded` prop (skips navigation + ShareLanding when embedded)
+
+Exact next action:
+> Implement T2-3 (Board contribution badges), T2-4 (streak grace period in WeeklyTracker), T2-6 (vibe badge tooltip in LifeScoreHero), then Tier 3 items
+
+Blockers / notes:
+- Migration 012 still needs to be run manually in Supabase SQL Editor before pantry photos work
+- pantry-photos Storage bucket still needs to be created manually in Supabase Dashboard
+- UX design spec plan at `C:\Users\andre\.claude\plans\read-progress-md-and-develope-atomic-lampson.md` — refer to it for remaining T2/T3 items
 
 ### What is done (all committed to `claude/jolly-euclid`)
 - Migrations 005–010 committed to branch
@@ -33,6 +59,21 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
   - **ARCHITECTURE.md** committed to main branch (team onboarding reference, 13 sections)
 - CLAUDE.md — Session Start + End Protocol + Branch & Merge Discipline
 - All peer-review fixes applied; `tsc --noEmit` clean
+- **Phase 10 (Session 15):** Performance improvements
+  - `POST /api/pantry/mark-bought-batch` — batch endpoint replacing N parallel mark-bought calls
+  - `ShoppingList.tsx` — batch save + 300ms Realtime debounce
+  - `shopping-list/route.ts` — parallelized meal plan + pantry fetches with Promise.all
+  - `MealPlanTab.tsx` — consolidated useEffect mount fetches
+- **Phase 11 (Session 16):** UX research-backed design improvements (T1-1 through T2-2 + T2-5)
+  - T1-1: Typography lift (text-sm → text-base throughout)
+  - T1-2: Streak color red → amber (no shame)
+  - T1-3: Ring tracks — category color at 15% opacity (not gray)
+  - T1-4: "Board" → "Household Pulse", rank medals removed
+  - T1-5: Empty states with possibility language
+  - T1-6: "Log Meal" → "Log" (tab crowding reduction)
+  - T2-1: Track progressive disclosure — collapse categories, today's checkbox visible
+  - T2-2: Import tab removed (6→5 tabs), embedded in Plan tab
+  - T2-5: Ring affirmation labels (Starting/Building/Halfway/Almost/Done)
 
 ### ✅ Phase 8 tested and working (2026-04-28)
 Migration 011 + seed confirmed run. Catalog browse, filter, add-to-plan, and missing-items drawer all verified locally.
