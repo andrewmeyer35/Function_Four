@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-05-13 (Session 16)
+Last updated: 2026-05-13 (Session 17)
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
@@ -11,24 +11,17 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 ## ⚡ START HERE — read this first, then say "continue"
 
 **Branch:** `claude/jolly-euclid` · **Worktree:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`
-**Session ended:** 2026-05-13 (Session 16)
+**Session ended:** 2026-05-13 (Session 17)
 
-### 🟢 READY TO CONTINUE — Phase 11 complete, committed
-Task: UX research-backed design improvements
-Status: All Tier 1 + T2-1 + T2-2 + T2-5 complete and committed (commit b27e3d3)
+### 🟢 MERGED TO MAIN — Phase 12 complete
+Task: Shopping list color coding, meal planner tiles, receipt scanner
+Status: Committed (`248c23c`) and merged to `main`
 
 Files changed this session:
-- `app/frontend/src/components/ui/WeeklyTracker.tsx` — T2-1 progressive disclosure (collapsed categories, today's checkbox), T1-1 typography
-- `app/frontend/src/components/ui/Ring.tsx` — T1-3 soft ring tracks (category color 15% opacity)
-- `app/frontend/src/components/ui/LifeScoreHero.tsx` — T1-2 streak amber, T1-3 soft tracks, T2-5 affirmation labels (Starting/Building/Halfway/Almost/Done)
-- `app/frontend/src/components/ui/BoardClient.tsx` — T1-4 removed rank medals, new empty state copy
-- `app/frontend/src/app/(app)/board/page.tsx` — T1-4 "Board" → "Household Pulse"
-- `app/frontend/src/components/meals/HistoryTab.tsx` — T1-5 empty state copy, T1-1 typography, AbortController, timezone fix
-- `app/frontend/src/components/meals/SuggestionsTab.tsx` — T1-5 empty state copy, T1-1 typography, AbortController
-- `app/frontend/src/components/meals/MealsTabs.tsx` — T1-6 "Log Meal"→"Log", T2-2 removed Import tab (6→5 tabs)
-- `app/frontend/src/components/meals/MealsClient.tsx` — T2-2 legacy ?tab=import → plan, type-safe Tab cast
-- `app/frontend/src/components/meals/MealPlanTab.tsx` — T2-2 embedded ImportRecipeTab collapsible section, W1/W2 error handling
-- `app/frontend/src/components/meals/ImportRecipeTab.tsx` — `embedded` prop (skips navigation + ShareLanding when embedded)
+- `app/frontend/src/components/meals/ShoppingList.tsx` — color-coded left-border accents (green/amber/blue), sub-headers per item type, smart purchase-size suggestions (STORE_UNITS, 35 ingredients), dedup of custom/low-stock against plan items
+- `app/frontend/src/components/meals/MealPlanDay.tsx` — color-coded meal tiles (breakfast=amber, lunch=blue, dinner=green, snack=purple)
+- `app/frontend/src/components/meals/ReceiptScanner.tsx` — new component: bottom-sheet drawer, photo upload, Claude vision receipt parse, match review, bulk cart removal
+- `app/frontend/src/app/api/cart/receipt/route.ts` — new route: multipart upload, Claude vision, fuzzy match against cart, returns ReceiptMatch[]
 
 Exact next action:
 > Implement T2-3 (Board contribution badges), T2-4 (streak grace period in WeeklyTracker), T2-6 (vibe badge tooltip in LifeScoreHero), then Tier 3 items
@@ -74,6 +67,13 @@ Blockers / notes:
   - T2-1: Track progressive disclosure — collapse categories, today's checkbox visible
   - T2-2: Import tab removed (6→5 tabs), embedded in Plan tab
   - T2-5: Ring affirmation labels (Starting/Building/Halfway/Almost/Done)
+- **Phase 12 (Session 17):** Shopping list UX + receipt scanner
+  - Color-coded left-border accents on shopping list items (green=meal plan, amber=low stock, blue=custom)
+  - Sub-headers per item type within each store section
+  - Smart package-size hints for 35 common ingredients (e.g. "Buy 1 family pack · uses 2 of 3 lbs")
+  - Deduplication: custom/low-stock items hidden if already covered by a meal plan item
+  - Meal planner day tiles color-coded by meal type (breakfast=amber, lunch=blue, dinner=green, snack=purple)
+  - Receipt scanner: photo → Claude vision → fuzzy match against cart → bulk remove checked items
 
 ### ✅ Phase 8 tested and working (2026-04-28)
 Migration 011 + seed confirmed run. Catalog browse, filter, add-to-plan, and missing-items drawer all verified locally.
@@ -587,6 +587,39 @@ public/
 ---
 
 ## 7. Session Log
+
+### Session 17 — Phase 12: Shopping list color coding + receipt scanner (2026-05-13)
+
+Built visual improvements to the shopping list and meal planner, plus a new receipt-scanning feature.
+
+**Commit:** `248c23c` — 4 files, 514 insertions
+
+**ShoppingList.tsx:**
+- Each store-section group now shows color-coded sub-headers: "This week's meals" (green), "Running low" (amber), "Added by you" (blue)
+- Items have a matching 4px left-border accent stripe in the same color
+- `getPurchaseSuggestion()` looks up 35 common ingredients in a STORE_UNITS table and returns a hint like "Buy 1 dozen · uses 6 of 12" to help users grab the right package size
+- `buildSections()` deduplicates: custom items and low-stock items are hidden from their sub-sections if a meal-plan item already covers the same ingredient name (normalized match)
+- Added "Scan" button in list header that opens ReceiptScanner drawer
+
+**MealPlanDay.tsx:**
+- `MEAL_COLORS` lookup: breakfast=amber, lunch=blue, dinner=green, snack=purple
+- Each filled tile uses the meal-type bg/border/dot color; meal type label shown next to colored dot
+
+**ReceiptScanner.tsx (new):**
+- Bottom-sheet drawer with state machine: idle → loading → review → removing → done | error
+- User takes/selects a photo; `POST /api/cart/receipt` runs Claude vision to extract item names
+- Review screen shows matched cart items with checkboxes; user can uncheck false positives
+- Confirmed items are batch-deleted from cart
+
+**api/cart/receipt/route.ts (new):**
+- Auth-gated POST; validates file type (JPEG/PNG/WebP/GIF) and size (max 10 MB)
+- Fetches unchecked cart items scoped to household or user
+- Calls `claude-sonnet-4-6` vision with 15s timeout to extract receipt item names as JSON array
+- Fuzzy-matches receipt names against cart items (normalize → stem → substring)
+
+**No new SQL migrations.** No new env vars required.
+
+---
 
 ### Sessions 1–4 — Core app (pre-2026-04-22)
 Auth, goals, daily logs, leaderboard, workout tracking, invite system, Vercel deployment.
