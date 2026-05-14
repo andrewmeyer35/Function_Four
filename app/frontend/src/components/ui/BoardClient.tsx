@@ -35,10 +35,11 @@ export function BoardClient({ memberData, weekStart, inviteCode }: Props) {
     return (
       <div className="surface-card rounded-2xl p-8 text-center">
         <p className="text-4xl mb-3">🏠</p>
-        <p className="text-sm font-semibold text-gray-700">No members yet</p>
-        <p className="text-xs text-gray-400 mt-1">
-          Invite people with code{' '}
+        <p className="text-base font-semibold text-gray-700">Your household is just getting started</p>
+        <p className="text-[15px] text-gray-400 mt-1">
+          Invite someone with code{' '}
           <span className="font-mono text-gray-600">{inviteCode}</span>
+          {' '}and see your habits side by side.
         </p>
       </div>
     )
@@ -60,7 +61,7 @@ export function BoardClient({ memberData, weekStart, inviteCode }: Props) {
       </div>
 
       {/* Member cards */}
-      {memberData.map((entry, rank) => {
+      {memberData.map((entry) => {
         const name = displayName(entry.member)
         const ini = initial(entry.member)
         const isOpen = expanded === entry.member.id
@@ -77,16 +78,9 @@ export function BoardClient({ memberData, weekStart, inviteCode }: Props) {
               className="w-full px-4 py-4 flex items-center gap-3 text-left hover:bg-gray-50 transition-colors"
               onClick={() => setExpanded(isOpen ? null : entry.member.id)}
             >
-              {/* Rank */}
-              <div className="w-5 flex-shrink-0 text-center">
-                <span className="text-sm font-bold text-gray-400 tabular-nums">
-                  {rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : `${rank + 1}`}
-                </span>
-              </div>
-
               {/* Avatar */}
               <div
-                className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                className={`w-9 h-9 rounded-full flex items-center justify-center text-base font-bold flex-shrink-0 ${
                   entry.isCurrentUser ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'
                 }`}
               >
@@ -96,16 +90,16 @@ export function BoardClient({ memberData, weekStart, inviteCode }: Props) {
               {/* Name + sub */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
+                  <p className="text-base font-semibold text-gray-900 truncate">{name}</p>
                   {entry.isCurrentUser && (
                     <span className="text-[10px] font-semibold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
                       you
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-400 mt-0.5">
+                <p className="text-[15px] text-gray-400 mt-0.5">
                   {entry.goalsHit}/{entry.totalGoals} goals hit
-                  {entry.avgIntensity != null ? ` · L${entry.avgIntensity} avg intensity` : ''}
+                  {entry.avgIntensity != null ? ` · L${entry.avgIntensity} avg` : ''}
                   {entry.totalDistance != null ? ` · ${entry.totalDistance}km` : ''}
                 </p>
               </div>

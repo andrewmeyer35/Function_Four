@@ -22,6 +22,15 @@ type Props = {
   history: (number | null)[]  // 7 entries, each 0-100 or null
 }
 
+function affirmationLabel(score: number): string {
+  if (score >= 100) return 'Done'
+  if (score >= 75) return 'Almost'
+  if (score >= 50) return 'Halfway'
+  if (score >= 25) return 'Building'
+  if (score >= 1) return 'Starting'
+  return '—'
+}
+
 function getVibeBg(pct: number): string {
   if (pct >= 80) return 'bg-emerald-100 text-emerald-800'
   if (pct >= 55) return 'bg-sky-100 text-sky-800'
@@ -66,7 +75,7 @@ export function LifeScoreHero({
         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${vibeBg}`}>
           {vibe.title}
         </span>
-        <p className="text-xs text-gray-500 leading-tight">{vibe.sub}</p>
+        <p className="text-[15px] text-gray-500 leading-tight">{vibe.sub}</p>
       </div>
 
       <div className="h-px bg-gray-100 mx-4" />
@@ -92,10 +101,10 @@ export function LifeScoreHero({
                 <div className="absolute inset-0 flex items-center justify-center">
                   {score !== null ? (
                     <span
-                      className="text-[14px] font-bold tabular-nums leading-none"
+                      className="text-[10px] font-bold leading-none text-center"
                       style={{ color: theme.from }}
                     >
-                      {score}%
+                      {affirmationLabel(score)}
                     </span>
                   ) : (
                     <span className="text-[13px] text-gray-300 font-medium">-</span>
@@ -116,7 +125,7 @@ export function LifeScoreHero({
       <div className="grid grid-cols-2 divide-x divide-y divide-gray-100">
         <div className="px-4 py-3">
           <p className="text-[9px] uppercase tracking-widest text-gray-400 font-semibold mb-0.5">Streak</p>
-          <p className="text-xl font-bold text-red-500 leading-none tabular-nums">{streak}</p>
+          <p className="text-xl font-bold text-amber-500 leading-none tabular-nums">{streak}</p>
           <p className="text-[11px] text-gray-400 mt-0.5">
             {streak === 1 ? 'week in a row' : 'weeks in a row'}
           </p>
@@ -210,7 +219,7 @@ function HeroRing({
         </linearGradient>
       </defs>
       <circle cx={size/2} cy={size/2} r={r} fill="none"
-        stroke={isEmpty ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.07)'} strokeWidth={stroke} />
+        stroke={fromColor} strokeWidth={stroke} opacity={0.15} />
       {!isEmpty && (
         <circle className="ring-fg" cx={size/2} cy={size/2} r={r} fill="none"
           stroke={`url(#${gradientId})`} strokeWidth={stroke}

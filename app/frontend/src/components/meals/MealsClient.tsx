@@ -5,7 +5,6 @@ import { MealsTabs, type Tab } from './MealsTabs'
 import { SuggestionsTab } from './SuggestionsTab'
 import { MealPlanTab } from './MealPlanTab'
 import { LogMealTab } from './LogMealTab'
-import { ImportRecipeTab } from './ImportRecipeTab'
 import { PantryTab } from './PantryTab'
 import { HistoryTab } from './HistoryTab'
 
@@ -19,20 +18,22 @@ export function MealsClient({ userId, householdId, userName: _userName }: Props)
   const searchParams = useSearchParams()
   const router = useRouter()
 
-  const rawTab = searchParams.get('tab') as Tab | null
-  const validTabs: Tab[] = ['suggest', 'plan', 'log', 'import', 'pantry', 'history']
-  const activeTab: Tab = rawTab && validTabs.includes(rawTab) ? rawTab : 'suggest'
+  const rawTab = searchParams.get('tab')
+  const validTabs: Tab[] = ['suggest', 'plan', 'log', 'pantry', 'history']
+  // Legacy: ?tab=import redirects to plan (import is now embedded in Plan tab)
+  const mappedRaw: string | null = rawTab === 'import' ? 'plan' : rawTab
+  const activeTab: Tab = (mappedRaw && validTabs.includes(mappedRaw as Tab))
+    ? (mappedRaw as Tab)
+    : 'suggest'
 
   function setTab(tab: Tab) {
     const params = new URLSearchParams(searchParams.toString())
     params.set('tab', tab)
-    if (tab !== 'import') {
-      params.delete('shareId')
-      params.delete('sharedUrl')
-      params.delete('sharedImageUrl')
-      params.delete('sharedTitle')
-      params.delete('shareError')
-    }
+    params.delete('shareId')
+    params.delete('sharedUrl')
+    params.delete('sharedImageUrl')
+    params.delete('sharedTitle')
+    params.delete('shareError')
     router.replace(`/meals?${params.toString()}`)
   }
 
@@ -41,7 +42,7 @@ export function MealsClient({ userId, householdId, userName: _userName }: Props)
       <div className="px-4 pt-6 pb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Meals</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-base text-gray-500 mt-0.5">
             Plan your week, track your pantry, and minimize food waste.
           </p>
         </div>
@@ -68,9 +69,6 @@ export function MealsClient({ userId, householdId, userName: _userName }: Props)
         )}
         {activeTab === 'log' && (
           <LogMealTab userId={userId} householdId={householdId} />
-        )}
-        {activeTab === 'import' && (
-          <ImportRecipeTab userId={userId} householdId={householdId} />
         )}
         {activeTab === 'pantry' && (
           <PantryTab userId={userId} householdId={householdId} />

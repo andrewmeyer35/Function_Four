@@ -12,12 +12,14 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 
 function dateLabel(iso: string): string {
-  const d = new Date(iso)
+  const [y, mo, day] = iso.split('-').map(Number)
+  const d = new Date(y, mo - 1, day)
   const today = new Date()
-  const diffDays = Math.floor((today.setHours(0, 0, 0, 0) - d.setHours(0, 0, 0, 0)) / 86_400_000)
+  today.setHours(0, 0, 0, 0)
+  const diffDays = Math.floor((today.getTime() - d.getTime()) / 86_400_000)
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function timeAgo(iso: string): string {
@@ -43,7 +45,8 @@ export function HistoryTab({ userId: _userId, householdId: _householdId }: Props
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/meal-history')
+    const ctrl = new AbortController()
+    fetch('/api/meal-history', { signal: ctrl.signal })
       .then(async (r) => {
         if (!r.ok) {
           const err = await r.json() as { error?: string }
@@ -52,8 +55,12 @@ export function HistoryTab({ userId: _userId, householdId: _householdId }: Props
         return r.json() as Promise<{ items: HistoryItem[] }>
       })
       .then((json) => setItems(json.items ?? []))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load history'))
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'Could not load history')
+      })
       .finally(() => setLoading(false))
+    return () => ctrl.abort()
   }, [])
 
   if (loading) {
@@ -67,7 +74,7 @@ export function HistoryTab({ userId: _userId, householdId: _householdId }: Props
   }
 
   if (error) {
-    return <p className="text-sm text-red-600 text-center py-8 px-4">{error}</p>
+    return <p className="text-base text-red-600 text-center py-8 px-4">{error}</p>
   }
 
   if (items.length === 0) {
@@ -79,8 +86,8 @@ export function HistoryTab({ userId: _userId, householdId: _householdId }: Props
           </svg>
         </div>
         <div>
-          <p className="font-semibold text-gray-900">No history yet</p>
-          <p className="text-sm text-gray-500 mt-1">Log a meal or import a recipe to see it here.</p>
+          <p className="text-base font-semibold text-gray-900">Your story starts here</p>
+          <p className="text-base text-gray-500 mt-1">Every great kitchen has a history. Log a meal or import a recipe — it'll show up here.</p>
         </div>
       </div>
     )
@@ -139,7 +146,7 @@ export function HistoryTab({ userId: _userId, householdId: _householdId }: Props
 
                   {/* Text */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate capitalize">{item.title}</p>
+                    <p className="text-base font-semibold text-gray-900 truncate capitalize">{item.title}</p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs text-gray-400">{timeAgo(item.date)}</span>
                       {item.ingredientCount > 0 && (

@@ -1,12 +1,11 @@
 'use client'
 
-export type Tab = 'suggest' | 'plan' | 'log' | 'import' | 'pantry' | 'history'
+export type Tab = 'suggest' | 'plan' | 'log' | 'pantry' | 'history'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'suggest', label: 'Suggest' },
   { id: 'plan',    label: 'Plan' },
-  { id: 'log',     label: 'Log Meal' },
-  { id: 'import',  label: 'Import' },
+  { id: 'log',     label: 'Log' },
   { id: 'pantry',  label: 'Pantry' },
   { id: 'history', label: 'History' },
 ]

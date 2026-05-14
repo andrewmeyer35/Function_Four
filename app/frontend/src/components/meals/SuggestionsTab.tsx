@@ -80,7 +80,8 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
   const [missingItems, setMissingItems] = useState<MissingItem[]>([])
 
   useEffect(() => {
-    fetch('/api/meal-suggestions')
+    const ctrl = new AbortController()
+    fetch('/api/meal-suggestions', { signal: ctrl.signal })
       .then(async (r) => {
         if (!r.ok) {
           const err = await r.json() as { error?: string }
@@ -93,8 +94,12 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
         setExpiring(json.expiringItems ?? [])
         setLowStock(json.lowStockItems ?? [])
       })
-      .catch(() => setError('Could not load suggestions'))
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError('Could not load suggestions')
+      })
       .finally(() => setLoading(false))
+    return () => ctrl.abort()
   }, [])
 
   if (loading) {
@@ -103,13 +108,13 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
         <svg className="animate-spin text-green-600" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12a9 9 0 11-6.219-8.56" />
         </svg>
-        <p className="text-sm text-gray-400">Analyzing your pantry…</p>
+        <p className="text-base text-gray-400">Analyzing your pantry…</p>
       </div>
     )
   }
 
   if (error) {
-    return <p className="text-sm text-red-600 text-center py-8 px-4">{error}</p>
+    return <p className="text-base text-red-600 text-center py-8 px-4">{error}</p>
   }
 
   const noPantry = expiring.length === 0 && lowStock.length === 0 && suggestions.length === 0
@@ -152,7 +157,7 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{s.title}</p>
+                  <p className="text-base font-semibold text-gray-900 truncate">{s.title}</p>
                   <p className="text-xs text-gray-500 mt-0.5 leading-snug">{s.reason}</p>
                 </div>
               </div>
@@ -205,15 +210,15 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
             </svg>
           </div>
           <div>
-            <p className="font-semibold text-gray-900">No AI suggestions yet</p>
-            <p className="text-sm text-gray-500 mt-1">Add items to your pantry and import recipes to get personalised picks. Browse recipes below to get started.</p>
+            <p className="text-base font-semibold text-gray-900">Ready when you are</p>
+            <p className="text-base text-gray-500 mt-1">Add a few pantry items and we'll start suggesting recipes that use what you have. The more you add, the better the picks.</p>
           </div>
         </div>
       )}
 
       {/* Recipe catalog */}
       <div className="border-t border-gray-100 pt-4">
-        <p className="text-sm font-semibold text-gray-900 mb-3">Browse all recipes</p>
+        <p className="text-base font-semibold text-gray-900 mb-3">Browse all recipes</p>
         <CatalogBrowser onAddToPlan={(recipe) => setSelectedRecipe(recipe)} />
       </div>
 

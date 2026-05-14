@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { MealPlanDay } from './MealPlanDay'
 import { RecipePicker } from './RecipePicker'
 import { ShoppingList } from './ShoppingList'
+import { ImportRecipeTab } from './ImportRecipeTab'
 import type { RecipeJSON } from '@/lib/meals/types'
 
 const DAY_LABELS = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']
@@ -63,6 +64,7 @@ interface Props {
 }
 
 export function MealPlanTab({ userId, householdId }: Props) {
+  const [importOpen, setImportOpen] = useState(false)
   const weekStart = getWeekStart()
   const [entries, setEntries] = useState<PlanEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -98,30 +100,43 @@ export function MealPlanTab({ userId, householdId }: Props) {
 
   async function handleRecipeSelect(recipe: SavedRecipe) {
     if (pickerDay === null) return
+    const day = pickerDay
     setPickerDay(null)
-
-    const res = await fetch('/api/meal-plan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        weekStart,
-        dayOfWeek: pickerDay,
-        mealType: 'dinner',
-        recipeImportId: recipe.id,
-        customDishName: null,
-        servings: recipe.recipe_json?.servings ?? 2,
-      }),
-    })
-    if (res.ok) {
-      await loadPlan()
-      await loadShoppingList()
+    try {
+      const res = await fetch('/api/meal-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weekStart,
+          dayOfWeek: day,
+          mealType: 'dinner',
+          recipeImportId: recipe.id,
+          customDishName: null,
+          servings: recipe.recipe_json?.servings ?? 2,
+        }),
+      })
+      if (res.ok) {
+        await loadPlan()
+        await loadShoppingList()
+      }
+    } catch {
+      // silently fail — the plan will just not update; user can retry by re-opening picker
     }
   }
 
   async function handleRemove(entryId: string) {
+    const snapshot = entries
     setEntries((prev) => prev.filter((e) => e.id !== entryId))
-    await fetch(`/api/meal-plan/${entryId}`, { method: 'DELETE' })
-    await loadShoppingList()
+    try {
+      const res = await fetch(`/api/meal-plan/${entryId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setEntries(snapshot)
+        return
+      }
+      await loadShoppingList()
+    } catch {
+      setEntries(snapshot)
+    }
   }
 
   const entryByDay = (day: number) => entries.find((e) => e.day_of_week === day) ?? null
@@ -136,7 +151,7 @@ export function MealPlanTab({ userId, householdId }: Props) {
       {/* Week header */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-gray-900">This week</p>
+          <p className="text-base font-semibold text-gray-900">This week</p>
           <p className="text-xs text-gray-400">{weekLabel}</p>
         </div>
         <span className="text-xs text-gray-400">{entries.length}/7 days planned</span>
@@ -175,6 +190,28 @@ export function MealPlanTab({ userId, householdId }: Props) {
           loading={listLoading}
           onBought={loadShoppingList}
         />
+      </div>
+
+      {/* Import a recipe */}
+      <div className="border-t border-gray-100 pt-4">
+        <button
+          onClick={() => setImportOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-1 py-2 text-left"
+        >
+          <span className="text-base font-semibold text-blue-600">Import a recipe</span>
+          <svg
+            width="16" height="16" viewBox="0 0 16 16" fill="none"
+            stroke="#2563eb" strokeWidth="2" strokeLinecap="round"
+            className={`transition-transform ${importOpen ? 'rotate-180' : ''}`}
+          >
+            <polyline points="3 6 8 11 13 6" />
+          </svg>
+        </button>
+        {importOpen && (
+          <div className="mt-3">
+            <ImportRecipeTab userId={userId} householdId={householdId} embedded />
+          </div>
+        )}
       </div>
 
       {/* Recipe picker modal */}

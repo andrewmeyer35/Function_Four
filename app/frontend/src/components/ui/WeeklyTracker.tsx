@@ -41,6 +41,7 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
   const [pending, setPending] = useState<Record<string, boolean>>({})
   const [workoutDetail, setWorkoutDetail] = useState<WorkoutDetailKey>(null)
   const [saveFailMsg, setSaveFailMsg] = useState<string | null>(null)
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set())
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -51,6 +52,19 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
 
   const days = getWeekDays(weekStart)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
+
+  const todayDayIndex = days.findIndex((d) => format(d, 'yyyy-MM-dd') === todayStr)
+  const effectiveTodayIndex = todayDayIndex === -1 ? 7 : todayDayIndex
+  const todayInWeek = todayDayIndex !== -1 ? days[todayDayIndex] : null
+
+  function toggleCat(key: string) {
+    setExpandedCats((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   async function toggle(metricKey: string, date: Date) {
     const dateStr = format(date, 'yyyy-MM-dd')
@@ -77,7 +91,6 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
     try {
       await postLog(dateStr, metricKey, nextVal)
     } catch {
-      // Revert optimistic update
       setLogs((prev) => ({
         ...prev,
         [dateStr]: {
@@ -85,7 +98,6 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
           [metricKey]: currentVal,
         } as DailyLog,
       }))
-      // Show error banner for 4 seconds
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current)
       setSaveFailMsg("Couldn't save — tap to retry")
       errorTimerRef.current = setTimeout(() => setSaveFailMsg(null), 4000)
@@ -134,16 +146,12 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
   const totalPossible = goals.reduce((s, g) => s + g.target, 0)
   const overallPct = totalPossible >= 1 ? Math.round((totalDone / totalPossible) * 100) : 0
 
-  const todayDayIndex = days.findIndex((d) => format(d, 'yyyy-MM-dd') === todayStr)
-  // Past weeks: todayDayIndex === -1 → set to 7 so isFuture is never true (all days interactive)
-  const effectiveTodayIndex = todayDayIndex === -1 ? 7 : todayDayIndex
-
   return (
     <div className="space-y-4">
 
       {/* Save error banner */}
       {saveFailMsg && (
-        <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 font-medium">
+        <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-base px-4 py-2.5 font-medium">
           {saveFailMsg}
         </div>
       )}
@@ -152,7 +160,7 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
       <div className="surface-card rounded-2xl px-4 py-4">
         <div className="flex items-center justify-between mb-2">
           <div>
-            <p className="text-sm font-bold text-gray-900">Weekly progress</p>
+            <p className="text-base font-bold text-gray-900">Weekly progress</p>
             <p className="text-xs text-gray-400 mt-0.5">
               {format(days[0], 'MMM d')} – {format(days[6], 'MMM d')}
             </p>
@@ -192,131 +200,203 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
         </div>
       </div>
 
-      {/* Per-category goal rows */}
+      {/* Per-category goal rows — progressive disclosure */}
       {byCategory.map(({ f, goals: catGoals }) => {
         const theme = F_THEME[f.key]
+        const isExpanded = expandedCats.has(f.key)
+
         return (
           <div key={f.key} className="surface-card rounded-2xl overflow-hidden">
-            <div
-              className="px-4 py-2.5 flex items-center gap-2 border-b border-gray-100"
+
+            {/* Category header — tappable to expand/collapse */}
+            <button
+              onClick={() => toggleCat(f.key)}
+              className={`w-full px-4 py-3 flex items-center gap-2 text-left ${isExpanded ? 'border-b border-gray-100' : ''}`}
               style={{ background: `linear-gradient(135deg, ${theme.from}15, ${theme.to}08)` }}
             >
               <span className="text-base">{f.emoji}</span>
-              <p className="text-xs font-bold uppercase tracking-wider" style={{ color: theme.from }}>
+              <p className="text-xs font-bold uppercase tracking-wider flex-1" style={{ color: theme.from }}>
                 {f.label}
               </p>
-            </div>
-
-            <div className="divide-y divide-gray-100">
-              {catGoals.map((goal) => {
-                const opt = GOAL_BY_KEY[goal.metric_key]
-                const count = weeklyCount(goal.metric_key, allLogs)
-                const isHit = count >= goal.target
-
+              {/* Weekly count summary shown when collapsed */}
+              {!isExpanded && (() => {
+                const total = catGoals.reduce((s, g) => s + weeklyCount(g.metric_key, allLogs), 0)
+                const possible = catGoals.reduce((s, g) => s + g.target, 0)
                 return (
-                  <div key={goal.metric_key} className="px-3 py-3">
-                    {/* Goal header */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-sm font-medium text-gray-800">
-                        {opt?.emoji} {goal.label}
-                      </p>
-                      <span
-                        className={`text-xs font-bold tabular-nums px-2 py-0.5 rounded-full ${
-                          isHit
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {count}/{goal.target}{isHit ? ' ✓' : ''}
+                  <span className="text-xs tabular-nums text-gray-400 mr-1">
+                    {total}/{possible}
+                  </span>
+                )
+              })()}
+              <svg
+                width="14" height="14" viewBox="0 0 14 14" fill="none"
+                stroke={theme.from} strokeWidth="2" strokeLinecap="round"
+                className={`flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              >
+                <polyline points="2 4 7 9 12 4" />
+              </svg>
+            </button>
+
+            {/* Collapsed: today's checkboxes for quick logging */}
+            {!isExpanded && (
+              <div className="px-4 py-3 flex flex-wrap gap-2">
+                {catGoals.map((goal) => {
+                  const opt = GOAL_BY_KEY[goal.metric_key]
+                  if (!todayInWeek) {
+                    const count = weeklyCount(goal.metric_key, allLogs)
+                    return (
+                      <span key={goal.metric_key} className="text-[15px] text-gray-500">
+                        {opt?.emoji} {goal.label}: {count}/{goal.target}
                       </span>
-                    </div>
+                    )
+                  }
+                  const checked = logs[todayStr]?.[goal.metric_key as keyof DailyLog] === true
+                  const loadKey = `${goal.metric_key}:${todayStr}`
+                  const isLoading = !!pending[loadKey]
+                  return (
+                    <button
+                      key={goal.metric_key}
+                      onClick={() => toggle(goal.metric_key, todayInWeek)}
+                      disabled={isLoading}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all tap-scale ${
+                        checked ? 'text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                      }`}
+                      style={checked ? { background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` } : undefined}
+                      aria-label={`${goal.label}: ${checked ? 'done today' : 'not done today'}`}
+                    >
+                      <span className={`w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        checked ? 'text-white' : 'bg-gray-200 text-gray-300'
+                      }`}>
+                        {isLoading ? (
+                          <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                        ) : checked ? (
+                          <CheckIcon />
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+                        )}
+                      </span>
+                      <span className="text-[15px] font-medium">
+                        {opt?.emoji} {goal.label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
 
-                    {/* Progress bar — fills with category gradient, turns emerald when hit */}
-                    <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-2">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${isHit ? 'bg-emerald-400' : ''}`}
-                        style={{
-                          width: `${goal.target > 0 ? Math.min(100, (count / goal.target) * 100) : 0}%`,
-                          ...(isHit ? {} : { background: `linear-gradient(90deg, ${theme.from}, ${theme.to})` }),
-                        }}
-                      />
-                    </div>
+            {/* Expanded: full 7-day grid per goal */}
+            {isExpanded && (
+              <div className="divide-y divide-gray-100">
+                {catGoals.map((goal) => {
+                  const opt = GOAL_BY_KEY[goal.metric_key]
+                  const count = weeklyCount(goal.metric_key, allLogs)
+                  const isHit = count >= goal.target
 
-                    {/* 7-day checkbox grid */}
-                    <div className="grid grid-cols-7 gap-1">
-                      {days.map((d, i) => {
-                        const dateStr = format(d, 'yyyy-MM-dd')
-                        const checked = logs[dateStr]?.[goal.metric_key as keyof DailyLog] === true
-                        const isFuture = i >= effectiveTodayIndex + 1
-                        const isToday = i === effectiveTodayIndex
-                        const loadKey = `${goal.metric_key}:${dateStr}`
-                        const isLoading = !!pending[loadKey]
+                  return (
+                    <div key={goal.metric_key} className="px-3 py-3">
+                      {/* Goal header */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-base font-medium text-gray-800">
+                          {opt?.emoji} {goal.label}
+                        </p>
+                        <span
+                          className={`text-xs font-bold tabular-nums px-2 py-0.5 rounded-full ${
+                            isHit
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {count}/{goal.target}{isHit ? ' ✓' : ''}
+                        </span>
+                      </div>
 
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => !isFuture && toggle(goal.metric_key, d)}
-                            disabled={isFuture || isLoading}
-                            className={`
-                              h-9 rounded-lg flex items-center justify-center transition-all tap-scale
-                              ${isFuture ? 'opacity-25 cursor-default' : 'cursor-pointer'}
-                              ${isToday && !checked ? 'ring-2 ring-offset-1 ring-indigo-400 bg-indigo-50' : ''}
-                              ${checked
-                                ? 'text-white shadow-sm'
-                                : 'text-gray-300 hover:bg-gray-200'}
-                              ${!checked && !isToday ? 'bg-gray-100' : ''}
-                            `}
-                            style={
-                              checked
-                                ? { background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }
-                                : undefined
-                            }
-                            aria-label={`${format(d, 'EEE MMM d')}: ${checked ? 'done' : 'not done'}`}
-                          >
-                            {isLoading ? (
-                              <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                            ) : checked ? (
-                              <CheckIcon />
-                            ) : (
-                              <span className="w-2 h-2 rounded-full bg-current opacity-30" />
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
+                      {/* Progress bar */}
+                      <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-2">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${isHit ? 'bg-emerald-400' : ''}`}
+                          style={{
+                            width: `${goal.target > 0 ? Math.min(100, (count / goal.target) * 100) : 0}%`,
+                            ...(isHit ? {} : { background: `linear-gradient(90deg, ${theme.from}, ${theme.to})` }),
+                          }}
+                        />
+                      </div>
 
-                    {/* Workout detail panels */}
-                    {goal.metric_key === 'worked_out' && (
-                      <div className="mt-2 space-y-1">
+                      {/* 7-day checkbox grid */}
+                      <div className="grid grid-cols-7 gap-1">
                         {days.map((d, i) => {
                           const dateStr = format(d, 'yyyy-MM-dd')
-                          const checked = logs[dateStr]?.worked_out === true
-                          const isOpen = workoutDetail === dateStr
-                          if (!checked) return null
-
-                          const savedIntensity = logs[dateStr]?.workout_intensity ?? null
-                          const savedDistance = logs[dateStr]?.workout_distance ?? null
+                          const checked = logs[dateStr]?.[goal.metric_key as keyof DailyLog] === true
+                          const isFuture = i >= effectiveTodayIndex + 1
+                          const isToday = i === effectiveTodayIndex
+                          const loadKey = `${goal.metric_key}:${dateStr}`
+                          const isLoading = !!pending[loadKey]
 
                           return (
-                            <WorkoutDetail
-                              key={dateStr}
-                              dateStr={dateStr}
-                              dayLabel={DAY_LABELS[i]}
-                              isOpen={isOpen}
-                              savedIntensity={savedIntensity}
-                              savedDistance={savedDistance}
-                              theme={theme}
-                              onOpen={() => setWorkoutDetail(isOpen ? null : dateStr)}
-                              onSave={saveWorkoutDetail}
-                            />
+                            <button
+                              key={i}
+                              onClick={() => !isFuture && toggle(goal.metric_key, d)}
+                              disabled={isFuture || isLoading}
+                              className={`
+                                h-9 rounded-lg flex items-center justify-center transition-all tap-scale
+                                ${isFuture ? 'opacity-25 cursor-default' : 'cursor-pointer'}
+                                ${isToday && !checked ? 'ring-2 ring-offset-1 ring-indigo-400 bg-indigo-50' : ''}
+                                ${checked
+                                  ? 'text-white shadow-sm'
+                                  : 'text-gray-300 hover:bg-gray-200'}
+                                ${!checked && !isToday ? 'bg-gray-100' : ''}
+                              `}
+                              style={
+                                checked
+                                  ? { background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }
+                                  : undefined
+                              }
+                              aria-label={`${format(d, 'EEE MMM d')}: ${checked ? 'done' : 'not done'}`}
+                            >
+                              {isLoading ? (
+                                <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                              ) : checked ? (
+                                <CheckIcon />
+                              ) : (
+                                <span className="w-2 h-2 rounded-full bg-current opacity-30" />
+                              )}
+                            </button>
                           )
                         })}
                       </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+
+                      {/* Workout detail panels */}
+                      {goal.metric_key === 'worked_out' && (
+                        <div className="mt-2 space-y-1">
+                          {days.map((d, i) => {
+                            const dateStr = format(d, 'yyyy-MM-dd')
+                            const checked = logs[dateStr]?.worked_out === true
+                            const isOpen = workoutDetail === dateStr
+                            if (!checked) return null
+
+                            const savedIntensity = logs[dateStr]?.workout_intensity ?? null
+                            const savedDistance = logs[dateStr]?.workout_distance ?? null
+
+                            return (
+                              <WorkoutDetail
+                                key={dateStr}
+                                dateStr={dateStr}
+                                dayLabel={DAY_LABELS[i]}
+                                isOpen={isOpen}
+                                savedIntensity={savedIntensity}
+                                savedDistance={savedDistance}
+                                theme={theme}
+                                onOpen={() => setWorkoutDetail(isOpen ? null : dateStr)}
+                                onSave={saveWorkoutDetail}
+                              />
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )
       })}
@@ -324,11 +404,11 @@ export function WeeklyTracker({ weekStart, goals, initialLogs }: Props) {
       {/* Motivational footer */}
       <div className="text-center py-2">
         {overallPct >= 100 ? (
-          <p className="text-sm font-semibold text-emerald-600">Perfect week so far. Keep going!</p>
+          <p className="text-base font-semibold text-emerald-600">Perfect week so far. Keep going!</p>
         ) : overallPct >= 50 ? (
-          <p className="text-sm text-gray-500">Over halfway there. Finish strong.</p>
+          <p className="text-base text-gray-500">Over halfway there. Finish strong.</p>
         ) : (
-          <p className="text-sm text-gray-400">Each check is a step forward.</p>
+          <p className="text-base text-gray-400">Each check is a step forward.</p>
         )}
         <a href="/goals" className="text-xs text-indigo-400 mt-1 inline-block hover:text-indigo-600">
           Edit goals
@@ -372,7 +452,7 @@ function WorkoutDetail({
         onClick={onOpen}
         className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 transition-colors"
       >
-        <span className="text-xs font-medium text-gray-600">
+        <span className="text-[15px] font-medium text-gray-600">
           {hasSaved
             ? `${dayLabel} workout`
             : `${dayLabel} · add intensity & distance`}
@@ -435,7 +515,7 @@ function WorkoutDetail({
               placeholder="e.g. 5.0"
               value={distance}
               onChange={(e) => setDistance(e.target.value)}
-              className="w-full h-9 px-3 rounded-xl border border-gray-200 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 placeholder:text-gray-300"
+              className="w-full h-9 px-3 rounded-xl border border-gray-200 text-base text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 placeholder:text-gray-300"
             />
           </div>
 
@@ -445,7 +525,7 @@ function WorkoutDetail({
               void onSave(dateStr, intensity, distance).finally(() => setIsSaving(false))
             }}
             disabled={isSaving}
-            className="w-full h-9 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50"
+            className="w-full h-9 rounded-xl text-base font-semibold text-white transition-all disabled:opacity-50"
             style={{ background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }}
           >
             {isSaving ? 'Saving…' : 'Save'}

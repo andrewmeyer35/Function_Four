@@ -10,6 +10,8 @@ import type { RecipeJSON, RecipeImportSourceType } from '@/lib/meals/types'
 interface Props {
   userId: string
   householdId: string | null
+  /** When true: skip PWA share landing and don't navigate on success — safe for embedding inside other tabs */
+  embedded?: boolean
 }
 
 type Stage =
@@ -22,7 +24,7 @@ type Stage =
 
 import { useState } from 'react'
 
-export function ImportRecipeTab({ userId: _userId, householdId }: Props) {
+export function ImportRecipeTab({ userId: _userId, householdId, embedded = false }: Props) {
   const searchParams = useSearchParams()
   const router = useRouter()
 
@@ -97,16 +99,18 @@ export function ImportRecipeTab({ userId: _userId, householdId }: Props) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Unknown error')
 
-      // Clear share params from URL after successful save
-      const params = new URLSearchParams(searchParams.toString())
-      params.delete('shareId')
-      params.delete('sharedUrl')
-      params.delete('sharedImageUrl')
-      params.delete('sharedTitle')
-      params.delete('shareError')
-      router.replace(`/meals?${params.toString()}`)
-
       setStage({ kind: 'success', title: recipe.title })
+
+      if (!embedded) {
+        // Clear share params from URL after successful save in standalone mode
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete('shareId')
+        params.delete('sharedUrl')
+        params.delete('sharedImageUrl')
+        params.delete('sharedTitle')
+        params.delete('shareError')
+        router.replace(`/meals?${params.toString()}`)
+      }
     } catch (err) {
       setStage({ kind: 'error', message: `Could not save recipe: ${String(err)}` })
     }
@@ -114,8 +118,8 @@ export function ImportRecipeTab({ userId: _userId, householdId }: Props) {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  // PWA share target — resolve the shared content first
-  const hasShareParams = !!(shareId || sharedUrl || shareError)
+  // PWA share target — resolve the shared content first (disabled when embedded)
+  const hasShareParams = !embedded && !!(shareId || sharedUrl || shareError)
 
   return (
     <div className="px-4 flex flex-col gap-5">
