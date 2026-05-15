@@ -32,14 +32,6 @@ export async function GET(req: NextRequest) {
   const weekStart = req.nextUrl.searchParams.get('weekStart')
   if (!weekStart) return NextResponse.json({ error: 'Missing weekStart' }, { status: 400 })
 
-  const { data: membership } = await supabase
-    .from('household_members')
-    .select('household_id')
-    .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle()
-  const householdId = membership?.household_id ?? null
-
   const DAY_LABELS = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
   // Track each ingredient with its meal attribution
@@ -49,36 +41,50 @@ export async function GET(req: NextRequest) {
     attributions: string[]
   }>()
 
-  // Fetch meal plan entries + pantry in parallel (pantry is independent once householdId is known)
-  const [planEntries, pantryRows] = await Promise.all([
-    (async () => {
-      const { data: plan } = await supabase
-        .from('meal_plans')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('week_start', weekStart)
-        .maybeSingle()
-      if (!plan) return []
-      const { data: entries } = await supabase
-        .from('meal_plan_entries')
-        .select('servings, day_of_week, meal_type, recipe_imports!inner(recipe_json)')
-        .eq('meal_plan_id', plan.id)
-        .not('recipe_import_id', 'is', null)
-      return entries ?? []
-    })(),
-    (async () => {
-      const q = supabase
-        .from('pantry_items')
-        .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category')
-        .order('name')
-      householdId ? q.eq('household_id', householdId) : q.eq('user_id', user.id)
-      const { data } = await q
-      return data ?? []
-    })(),
+  // Run household lookup + meal plan join in parallel (plan only needs user.id)
+  const [membershipResult, planResult] = await Promise.all([
+    supabase
+      .from('household_members')
+      .select('household_id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('meal_plans')
+      .select(`
+        id,
+        meal_plan_entries (
+          servings, day_of_week, meal_type,
+          recipe_imports ( recipe_json )
+        )
+      `)
+      .eq('user_id', user.id)
+      .eq('week_start', weekStart)
+      .maybeSingle(),
   ])
 
+  const householdId = membershipResult.data?.household_id ?? null
+  const planEntries = (planResult.data?.meal_plan_entries ?? []) as unknown as Array<{
+    servings: number
+    day_of_week: number
+    meal_type: string
+    recipe_imports: { recipe_json: RecipeJSON } | null
+  }>
+
+  // Fetch pantry now that we have householdId
+  const pantryQueryBuilder = supabase
+    .from('pantry_items')
+    .select('id, name, aliases, quantity, unit, min_quantity, expiration_date, category')
+    .order('name')
+  if (householdId) {
+    pantryQueryBuilder.eq('household_id', householdId)
+  } else {
+    pantryQueryBuilder.eq('user_id', user.id)
+  }
+  const { data: pantryRows } = await pantryQueryBuilder
+
   for (const e of planEntries) {
-    const ri = e.recipe_imports as unknown as { recipe_json: RecipeJSON } | null
+    const ri = e.recipe_imports
     if (!ri?.recipe_json) continue
 
     const recipe = ri.recipe_json
