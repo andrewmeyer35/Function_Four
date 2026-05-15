@@ -115,7 +115,7 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
   const noPantry = expiring.length === 0 && lowStock.length === 0 && suggestions.length === 0
 
   return (
-    <div className="px-4 flex flex-col gap-5 pb-6">
+    <div className="px-4 flex flex-col gap-5 pb-2">
 
       {/* Expiry alerts */}
       {expiring.length > 0 && (
