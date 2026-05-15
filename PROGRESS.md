@@ -3,7 +3,7 @@
 Live URL: https://function-four.vercel.app
 Repo: https://github.com/andrewmeyer35/Function_Four
 Supabase: project configured with RLS policies
-Last updated: 2026-05-13 (Session 17)
+Last updated: 2026-05-14 (Session 18)
 Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`)
 
 ---
@@ -11,27 +11,31 @@ Working branch: `claude/jolly-euclid` (git worktree at `C:\Users\andre\Function_
 ## ⚡ START HERE — read this first, then say "continue"
 
 **Branch:** `claude/jolly-euclid` · **Worktree:** `C:\Users\andre\Function_4\.claude\worktrees\jolly-euclid`
-**Session ended:** 2026-05-13 (Session 17)
+**Session ended:** 2026-05-14 (Session 18)
 
-### 🟢 MERGED TO MAIN — Phase 12 complete
-Task: Shopping list color coding, meal planner tiles, receipt scanner
-Status: Committed (`248c23c`) and merged to `main`
+### 🟡 AHEAD OF MAIN — Phase 13 complete, ready to merge
+Task: Receipt scanner → pantry + codebase lifecycle/timeout fixes
+Status: Committed (`b4767ac`) — NOT yet merged to main
 
 Files changed this session:
-- `app/frontend/src/components/meals/ShoppingList.tsx` — color-coded left-border accents (green/amber/blue), sub-headers per item type, smart purchase-size suggestions (STORE_UNITS, 35 ingredients), dedup of custom/low-stock against plan items
-- `app/frontend/src/components/meals/MealPlanDay.tsx` — color-coded meal tiles (breakfast=amber, lunch=blue, dinner=green, snack=purple)
-- `app/frontend/src/components/meals/ReceiptScanner.tsx` — new component: bottom-sheet drawer, photo upload, Claude vision receipt parse, match review, bulk cart removal
-- `app/frontend/src/app/api/cart/receipt/route.ts` — new route: multipart upload, Claude vision, fuzzy match against cart, returns ReceiptMatch[]
+- `app/frontend/src/app/api/cart/receipt/route.ts` — ReceiptMatch gains `quantity`/`unit` from cart_items
+- `app/frontend/src/components/meals/ReceiptScanner.tsx` — handleRemove now calls mark-bought-batch first, then parallel cart DELETEs; done screen reports "N items added to pantry"
+- `app/frontend/src/app/api/meal-log/analyze-photo/route.ts` — AbortSignal.timeout(15_000) on Claude call; word-boundary dish-match check
+- `app/frontend/src/app/api/meal-suggestions/route.ts` — AbortSignal.timeout(10_000) on Claude call
+- `app/frontend/src/components/meals/MealPlanTab.tsx` — mountedRef + per-function AbortControllers, error state + banner, empty-state hint; uses shared getWeekStart
+- `app/frontend/src/components/meals/SuggestionsTab.tsx` — mountedRef guards on all setState in fetch chain; uses shared getWeekStart
+- `app/frontend/src/components/meals/LogMealTab.tsx` — AbortController + mountedRef on handlePhoto + handleDishSelect
+- `app/frontend/src/components/meals/PantryTab.tsx` — AbortController + mountedRef on load()
+- `app/frontend/src/lib/meals/utils.ts` — NEW: shared getWeekStart() utility
 
 Exact next action:
-> Implement the plan at `C:\Users\andre\.claude\plans\lets-build-out-option-sleepy-pretzel.md`
-> Part 1: Receipt scanner → pantry (receipt/route.ts + ReceiptScanner.tsx)
-> Part 2: Codebase review fixes (analyze-photo timeout, meal-suggestions timeout, MealPlanTab/SuggestionsTab/LogMealTab/PantryTab lifecycle, extract getWeekStart utility)
+> Merge `claude/jolly-euclid` → `main` (see merge criteria in CLAUDE.md)
+> Then implement remaining UX backlog: T2-3 badges, T2-4 streak grace, T2-6 vibe tooltip
+> Plan: `C:\Users\andre\.claude\plans\read-progress-md-and-develope-atomic-lampson.md`
 
 Blockers / notes:
 - Migration 012 still needs to be run manually in Supabase SQL Editor before pantry photos work
 - pantry-photos Storage bucket still needs to be created manually in Supabase Dashboard
-- Plan file: `C:\Users\andre\.claude\plans\lets-build-out-option-sleepy-pretzel.md` — full spec for Part 1 + Part 2
 - UX design spec plan at `C:\Users\andre\.claude\plans\read-progress-md-and-develope-atomic-lampson.md` — refer to it for remaining T2/T3 items (T2-3 badges, T2-4 streak grace, T2-6 vibe tooltip)
 
 ### What is done (all committed to `claude/jolly-euclid`)
@@ -77,6 +81,13 @@ Blockers / notes:
   - Deduplication: custom/low-stock items hidden if already covered by a meal plan item
   - Meal planner day tiles color-coded by meal type (breakfast=amber, lunch=blue, dinner=green, snack=purple)
   - Receipt scanner: photo → Claude vision → fuzzy match against cart → bulk remove checked items
+- **Phase 13 (Session 18):** Receipt→pantry + lifecycle/timeout fixes
+  - ReceiptScanner now calls mark-bought-batch before deleting cart items (receipt scan = pantry update)
+  - AbortSignal.timeout on all Claude calls (analyze-photo 15s, meal-suggestions 10s, receipt 15s was already set)
+  - Tightened dish-match in analyze-photo to word-boundary check (prevents "apple"/"pineapple" false match)
+  - MealPlanTab, SuggestionsTab, LogMealTab, PantryTab: mountedRef + AbortController on all fetch paths
+  - MealPlanTab: error banner + empty-state hint below day grid
+  - New `src/lib/meals/utils.ts`: shared `getWeekStart()` (was duplicated in 3 files)
 
 ### ✅ Phase 8 tested and working (2026-04-28)
 Migration 011 + seed confirmed run. Catalog browse, filter, add-to-plan, and missing-items drawer all verified locally.
@@ -127,16 +138,15 @@ Changes needed:
 - Produce a design spec / decision log for implementing in a follow-up session
 - Topics to cover: meals tab information density, pantry card layout, suggestion card visual polish, onboarding flow, profile page
 
-### Next session priorities (2026-05-13)
+### Next session priorities (2026-05-14)
 | Priority | Goal | Scope |
 |----------|------|-------|
-| **1 — Must** | Receipt scanner → pantry | `receipt/route.ts` + `ReceiptScanner.tsx` — see plan Part 1 |
-| **2 — Must** | API timeout fixes | `analyze-photo/route.ts` + `meal-suggestions/route.ts` — see plan Part 2 |
-| **3 — Must** | Component lifecycle fixes | `MealPlanTab`, `SuggestionsTab`, `LogMealTab`, `PantryTab` — mountedRef + AbortController |
-| **4 — Should** | Extract getWeekStart utility | New `src/lib/meals/utils.ts`, update 3 callers |
-| **5 — Nice** | T2-3/T2-4/T2-6 UX items | Board badges, streak grace period, vibe badge tooltip |
+| **1 — Must** | Merge to main | `git merge claude/jolly-euclid` from main → push → Vercel deploy |
+| **2 — Should** | T2-3 leaderboard badges | Board page — achievement badges per household |
+| **3 — Should** | T2-4 streak grace period | Allow 1-day gap before streak resets |
+| **4 — Nice** | T2-6 vibe badge tooltip | Explain what each vibe badge means on hover/tap |
 
-**Plan file for items 1–4:** `C:\Users\andre\.claude\plans\lets-build-out-option-sleepy-pretzel.md`
+**UX design plan:** `C:\Users\andre\.claude\plans\read-progress-md-and-develope-atomic-lampson.md`
 
 ### Pickup checklist for next session
 ```
@@ -592,6 +602,26 @@ public/
 ---
 
 ## 7. Session Log
+
+### Session 18 — Phase 13: Receipt→pantry + lifecycle/timeout fixes (2026-05-14)
+
+Executed plan `lets-build-out-option-sleepy-pretzel.md` in full (Part 1 + Part 2).
+
+**What was built:**
+- Receipt scanner now calls `POST /api/pantry/mark-bought-batch` before cart DELETEs — scanning a receipt updates pantry quantities exactly like the manual "Done → Save All" flow. Done screen now says "N items added to pantry" when batch succeeds.
+- `ReceiptMatch` interface extended with `quantity` and `unit` (from `cart_items`) so the component can pass them straight to mark-bought-batch without an extra DB lookup.
+- AbortSignal.timeout added to all Claude `messages.create` calls: 15s on analyze-photo, 10s on meal-suggestions.
+- Word-boundary dish-match check in analyze-photo prevents "apple" matching "pineapple"-style substring false positives.
+- `MealPlanTab`, `SuggestionsTab`, `LogMealTab`, `PantryTab` all now have `mountedRef` + `AbortController` — no more React setState-on-unmounted-component warnings when navigating quickly between tabs.
+- `MealPlanTab` gains error banner and empty-state hint.
+- New shared `src/lib/meals/utils.ts` exports `getWeekStart()` — local copies removed from MealPlanTab, SuggestionsTab.
+
+**Commits:** `b4767ac`
+**tsc:** 0 errors
+
+**User actions required:**
+- `git checkout main && git merge claude/jolly-euclid && git push origin main` to deploy
+- No new migrations, no new env vars
 
 ### Session 17 — Phase 12: Shopping list color coding + receipt scanner (2026-05-13)
 
