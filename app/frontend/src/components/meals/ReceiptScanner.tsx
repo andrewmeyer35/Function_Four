@@ -13,7 +13,7 @@ type Stage =
   | { kind: 'loading' }
   | { kind: 'review'; matches: ReceiptMatch[] }
   | { kind: 'removing' }
-  | { kind: 'done'; count: number }
+  | { kind: 'done'; count: number; pantryUpdated: boolean }
   | { kind: 'error'; message: string }
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
@@ -79,18 +79,47 @@ export function ReceiptScanner({ onClose, onRemoved }: Props) {
     const controller = new AbortController()
     abortRef.current = controller
     setStage({ kind: 'removing' })
-    let removed = 0
-    for (const id of checkedIds) {
-      try {
-        const res = await fetch(`/api/cart/${id}`, { method: 'DELETE', signal: controller.signal })
-        if (res.ok) removed++
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return
-        // non-fatal — continue with remaining items
-      }
+
+    const confirmed = stage.matches.filter(m => checkedIds.has(m.cartItemId))
+
+    // Step 1: add to pantry (single batch call)
+    let pantryOk = false
+    try {
+      const res = await fetch('/api/pantry/mark-bought-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          items: confirmed.map(m => ({
+            ingredientName: m.cartItemName,
+            quantity: m.quantity,
+            unit: m.unit,
+            pantryItemId: null,
+          })),
+        }),
+      })
+      pantryOk = res.ok
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
     }
+
     if (!mountedRef.current) return
-    setStage({ kind: 'done', count: removed })
+
+    // Step 2: delete cart items in parallel (proceed even if pantry partially failed)
+    let removed = 0
+    const deletes = confirmed.map(async m => {
+      try {
+        const res = await fetch(`/api/cart/${m.cartItemId}`, {
+          method: 'DELETE',
+          signal: controller.signal,
+        })
+        if (res.ok) removed++
+      } catch { /* non-fatal */ }
+    })
+    await Promise.all(deletes)
+
+    if (!mountedRef.current) return
+    setStage({ kind: 'done', count: removed, pantryUpdated: pantryOk })
     onRemoved()
   }
 
@@ -234,7 +263,11 @@ export function ReceiptScanner({ onClose, onRemoved }: Props) {
               </svg>
             </div>
             <div>
-              <p className="text-base font-semibold text-gray-900">{stage.count} item{stage.count !== 1 ? 's' : ''} removed</p>
+              <p className="text-base font-semibold text-gray-900">
+                {stage.pantryUpdated
+                  ? `${stage.count} item${stage.count !== 1 ? 's' : ''} added to pantry`
+                  : `${stage.count} item${stage.count !== 1 ? 's' : ''} removed from list`}
+              </p>
               <p className="text-sm text-gray-500 mt-1">Your shopping list is updated.</p>
             </div>
             <button

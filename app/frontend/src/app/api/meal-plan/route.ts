@@ -10,31 +10,33 @@ export async function GET(req: NextRequest) {
   const weekStart = req.nextUrl.searchParams.get('weekStart')
   if (!weekStart) return NextResponse.json({ error: 'Missing weekStart' }, { status: 400 })
 
-  const { data: plan } = await supabase
+  // Single join query instead of two sequential round-trips
+  const { data: plan, error } = await supabase
     .from('meal_plans')
-    .select('id')
+    .select(`
+      id,
+      meal_plan_entries (
+        id,
+        day_of_week,
+        meal_type,
+        servings,
+        custom_dish_name,
+        recipe_import_id,
+        recipe_imports ( id, recipe_json, source_type )
+      )
+    `)
     .eq('user_id', user.id)
     .eq('week_start', weekStart)
     .maybeSingle()
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!plan) return NextResponse.json({ entries: [] })
 
-  const { data: entries, error } = await supabase
-    .from('meal_plan_entries')
-    .select(`
-      id,
-      day_of_week,
-      meal_type,
-      servings,
-      custom_dish_name,
-      recipe_import_id,
-      recipe_imports ( id, recipe_json, source_type )
-    `)
-    .eq('meal_plan_id', plan.id)
-    .order('day_of_week')
+  const entries = [...((plan.meal_plan_entries ?? []) as unknown[])].sort(
+    (a, b) => (a as { day_of_week: number }).day_of_week - (b as { day_of_week: number }).day_of_week
+  )
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ planId: plan.id, entries: entries ?? [] })
+  return NextResponse.json({ planId: plan.id, entries })
 }
 
 interface UpsertBody {

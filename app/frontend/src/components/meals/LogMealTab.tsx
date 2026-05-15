@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { MealPhotoCapture } from './MealPhotoCapture'
 import { DishSearch } from './DishSearch'
 import { ServingsScaler } from './ServingsScaler'
@@ -33,18 +33,30 @@ export function LogMealTab({ userId: _userId, householdId }: Props) {
   const [stage, setStage] = useState<Stage>({ kind: 'idle' })
   const [servings, setServings] = useState(1)
   const [items, setItems] = useState<ConfirmationItem[]>([])
+  const mountedRef = useRef(true)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    mountedRef.current = false
+    abortRef.current?.abort()
+  }, [])
 
   // ── Photo path ────────────────────────────────────────────────────────────
 
   async function handlePhoto(file: File) {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setStage({ kind: 'loading', label: 'Analyzing your meal…' })
     try {
       const form = new FormData()
       form.append('file', file)
       if (householdId) form.append('householdId', householdId)
 
-      const res = await fetch('/api/meal-log/analyze-photo', { method: 'POST', body: form })
+      const res = await fetch('/api/meal-log/analyze-photo', { method: 'POST', body: form, signal: controller.signal })
+      if (!mountedRef.current) return
       const json = await res.json()
+      if (!mountedRef.current) return
       if (!res.ok) throw new Error(json.error ?? 'Unknown error')
 
       const analysis: MealPhotoAnalysis = json.analysis
@@ -65,6 +77,8 @@ export function LogMealTab({ userId: _userId, householdId }: Props) {
         sourceType: 'meal_photo_estimated',
       })
     } catch (err) {
+      if (!mountedRef.current) return
+      if (err instanceof Error && err.name === 'AbortError') return
       setStage({ kind: 'error', message: `Photo analysis failed: ${String(err)}` })
     }
   }
@@ -72,13 +86,18 @@ export function LogMealTab({ userId: _userId, householdId }: Props) {
   // ── Dish search path ──────────────────────────────────────────────────────
 
   async function handleDishSelect(dish: { id: number; title: string }) {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setStage({ kind: 'loading', label: `Loading ingredients for "${dish.title}"…` })
     try {
       const params = new URLSearchParams({ id: String(dish.id) })
       if (householdId) params.set('householdId', householdId)
 
-      const res = await fetch(`/api/meal-log/dish-ingredients?${params.toString()}`)
+      const res = await fetch(`/api/meal-log/dish-ingredients?${params.toString()}`, { signal: controller.signal })
+      if (!mountedRef.current) return
       const json = await res.json()
+      if (!mountedRef.current) return
       if (!res.ok) throw new Error(json.error ?? 'Unknown error')
 
       const matches: PantryMatchResult[] = json.matches
@@ -97,6 +116,8 @@ export function LogMealTab({ userId: _userId, householdId }: Props) {
         sourceType: 'confirmed',
       })
     } catch (err) {
+      if (!mountedRef.current) return
+      if (err instanceof Error && err.name === 'AbortError') return
       setStage({ kind: 'error', message: `Could not load dish ingredients: ${String(err)}` })
     }
   }

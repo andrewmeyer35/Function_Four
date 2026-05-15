@@ -49,18 +49,28 @@ export async function GET() {
     .maybeSingle()
   const householdId = membership?.household_id ?? null
 
-  // Fetch pantry
-  const pantryQuery = supabase
+  // Build pantry query (don't await yet — run in parallel with prefs)
+  const pantryQueryBuilder = supabase
     .from('pantry_items')
     .select('id, name, quantity, unit, expiration_date, min_quantity, updated_at')
     .order('name')
   if (householdId) {
-    pantryQuery.eq('household_id', householdId)
+    pantryQueryBuilder.eq('household_id', householdId)
   } else {
-    pantryQuery.eq('user_id', user.id)
+    pantryQueryBuilder.eq('user_id', user.id)
   }
-  const { data: pantryRows } = await pantryQuery
-  const pantry: PantryRow[] = (pantryRows ?? []) as PantryRow[]
+
+  // Fetch pantry + user preferences in parallel (prefs only needs user.id)
+  const [pantryResult, prefsResult] = await Promise.all([
+    pantryQueryBuilder,
+    supabase
+      .from('user_preferences')
+      .select('dietary_restrictions, disliked_ingredients, cuisine_preferences, cached_suggestions, last_suggestion_at, pantry_snapshot_hash')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+  ])
+  const pantry: PantryRow[] = (pantryResult.data ?? []) as PantryRow[]
+  const prefsRow = prefsResult.data
 
   // Compute pantry hash — detects adds, removes, and quantity/expiry updates
   const pantryHash = pantry.length === 0
@@ -80,13 +90,6 @@ export async function GET() {
   const lowStockItems = pantry.filter(
     (p) => p.min_quantity != null && (p.quantity ?? 0) <= p.min_quantity
   )
-
-  // Fetch user preferences (also used for cache storage)
-  const { data: prefsRow } = await supabase
-    .from('user_preferences')
-    .select('dietary_restrictions, disliked_ingredients, cuisine_preferences, cached_suggestions, last_suggestion_at, pantry_snapshot_hash')
-    .eq('user_id', user.id)
-    .maybeSingle()
 
   // Return cached suggestions if pantry unchanged and cache is <6 hours old
   const SIX_HOURS_MS = 6 * 60 * 60 * 1000
@@ -227,7 +230,7 @@ Return ONLY a JSON array of strings in the same order as the recipes. Example: [
 
 Return ONLY the JSON array. No markdown.`,
         }],
-      })
+      }, { signal: AbortSignal.timeout(10_000) })
 
       const rawText = msg.content[0].type === 'text' ? msg.content[0].text : '[]'
       const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
