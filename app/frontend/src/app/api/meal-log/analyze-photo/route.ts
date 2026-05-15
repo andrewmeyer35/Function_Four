@@ -201,8 +201,12 @@ Return ONLY the JSON. No markdown, no explanation.`,
           ],
         },
       ],
-    }, { signal: AbortSignal.timeout(15_000) })
+    }, { signal: AbortSignal.timeout(25_000) })
   } catch (err) {
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
+    if (isTimeout) {
+      return NextResponse.json({ error: 'Photo analysis timed out — try a smaller image or retake the photo.' }, { status: 504 })
+    }
     return NextResponse.json({ error: `Vision API failed: ${String(err)}` }, { status: 500 })
   }
 

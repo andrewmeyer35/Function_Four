@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { MealPlanDay } from './MealPlanDay'
 import { RecipePicker } from './RecipePicker'
-import { ShoppingList } from './ShoppingList'
 import { ImportRecipeTab } from './ImportRecipeTab'
 import type { RecipeJSON } from '@/lib/meals/types'
 import { getWeekStart } from '@/lib/meals/utils'
@@ -27,26 +26,6 @@ interface PlanEntry {
   recipe_imports: { id: string; recipe_json: RecipeJSON; source_type: string } | null
 }
 
-interface ShoppingItem {
-  ingredientName: string
-  neededQty: number | null
-  unit: string | null
-  haveQty: number
-  buyQty: number | null
-  pantryItemId: string | null
-  reason: 'from_meal_plan' | 'low_stock'
-  mealAttribution: string[]
-}
-
-interface LowStockItem {
-  id: string
-  name: string
-  quantity: number | null
-  unit: string | null
-  min_quantity: number | null
-}
-
-
 interface Props {
   userId: string
   householdId: string | null
@@ -59,17 +38,12 @@ export function MealPlanTab({ userId, householdId }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pickerDay, setPickerDay] = useState<number | null>(null)
-  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([])
-  const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([])
-  const [listLoading, setListLoading] = useState(false)
   const mountedRef = useRef(true)
   const planAbortRef = useRef<AbortController | null>(null)
-  const listAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => () => {
     mountedRef.current = false
     planAbortRef.current?.abort()
-    listAbortRef.current?.abort()
   }, [])
 
   const loadPlan = useCallback(async () => {
@@ -93,27 +67,7 @@ export function MealPlanTab({ userId, householdId }: Props) {
     }
   }, [weekStart])
 
-  const loadShoppingList = useCallback(async () => {
-    listAbortRef.current?.abort()
-    const controller = new AbortController()
-    listAbortRef.current = controller
-    setListLoading(true)
-    try {
-      const res = await fetch(`/api/shopping-list?weekStart=${weekStart}`, { signal: controller.signal })
-      if (!mountedRef.current) return
-      const json = await res.json() as { shoppingItems: ShoppingItem[]; lowStockItems: LowStockItem[] }
-      if (!mountedRef.current) return
-      setShoppingItems(json.shoppingItems ?? [])
-      setLowStockItems(json.lowStockItems ?? [])
-    } catch (err) {
-      if (!mountedRef.current) return
-      if (err instanceof Error && err.name === 'AbortError') return
-    } finally {
-      if (mountedRef.current) setListLoading(false)
-    }
-  }, [weekStart])
-
-  useEffect(() => { void Promise.all([loadPlan(), loadShoppingList()]) }, [loadPlan, loadShoppingList])
+  useEffect(() => { void loadPlan() }, [loadPlan])
 
   async function handleRecipeSelect(recipe: SavedRecipe) {
     if (pickerDay === null) return
@@ -132,12 +86,9 @@ export function MealPlanTab({ userId, householdId }: Props) {
           servings: recipe.recipe_json?.servings ?? 2,
         }),
       })
-      if (res.ok) {
-        await loadPlan()
-        await loadShoppingList()
-      }
+      if (res.ok) await loadPlan()
     } catch {
-      // silently fail — the plan will just not update; user can retry by re-opening picker
+      // silently fail — user can retry by re-opening picker
     }
   }
 
@@ -146,11 +97,7 @@ export function MealPlanTab({ userId, householdId }: Props) {
     setEntries((prev) => prev.filter((e) => e.id !== entryId))
     try {
       const res = await fetch(`/api/meal-plan/${entryId}`, { method: 'DELETE' })
-      if (!res.ok) {
-        setEntries(snapshot)
-        return
-      }
-      await loadShoppingList()
+      if (!res.ok) setEntries(snapshot)
     } catch {
       setEntries(snapshot)
     }
@@ -158,7 +105,6 @@ export function MealPlanTab({ userId, householdId }: Props) {
 
   const entryByDay = (day: number) => entries.find((e) => e.day_of_week === day) ?? null
 
-  // Format week range for display
   const weekEndDate = new Date(weekStart)
   weekEndDate.setDate(weekEndDate.getDate() + 6)
   const weekLabel = `${new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
@@ -207,19 +153,6 @@ export function MealPlanTab({ userId, householdId }: Props) {
           )}
         </>
       )}
-
-      {/* Shopping list */}
-      <div className="border-t border-gray-100 pt-4">
-        <ShoppingList
-          shoppingItems={shoppingItems}
-          lowStockItems={lowStockItems}
-          weekStart={weekStart}
-          userId={userId}
-          householdId={householdId}
-          loading={listLoading}
-          onBought={loadShoppingList}
-        />
-      </div>
 
       {/* Import a recipe */}
       <div className="border-t border-gray-100 pt-4">

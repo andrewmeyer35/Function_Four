@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { MealsTabs, type Tab } from './MealsTabs'
 import { SuggestionsTab } from './SuggestionsTab'
 import { MealPlanTab } from './MealPlanTab'
+import { GroceryTab } from './GroceryTab'
 import { LogMealTab } from './LogMealTab'
 import { PantryTab } from './PantryTab'
 import { HistoryTab } from './HistoryTab'
@@ -19,12 +20,13 @@ export function MealsClient({ userId, householdId, userName: _userName }: Props)
   const router = useRouter()
 
   const rawTab = searchParams.get('tab')
-  const validTabs: Tab[] = ['suggest', 'plan', 'log', 'pantry', 'history']
-  // Legacy: ?tab=import redirects to plan (import is now embedded in Plan tab)
-  const mappedRaw: string | null = rawTab === 'import' ? 'plan' : rawTab
+  const validTabs: Tab[] = ['plan', 'grocery', 'pantry', 'log', 'history']
+  // Legacy: ?tab=suggest and ?tab=import both redirect to plan
+  const mappedRaw: string | null =
+    rawTab === 'suggest' || rawTab === 'import' ? 'plan' : rawTab
   const activeTab: Tab = (mappedRaw && validTabs.includes(mappedRaw as Tab))
     ? (mappedRaw as Tab)
-    : 'suggest'
+    : 'plan'
 
   function setTab(tab: Tab) {
     const params = new URLSearchParams(searchParams.toString())
@@ -61,11 +63,15 @@ export function MealsClient({ userId, householdId, userName: _userName }: Props)
       <MealsTabs activeTab={activeTab} onTabChange={setTab} />
 
       <div className="mt-4">
-        {activeTab === 'suggest' && (
-          <SuggestionsTab userId={userId} householdId={householdId} />
-        )}
         {activeTab === 'plan' && (
-          <MealPlanTab userId={userId} householdId={householdId} />
+          <>
+            <SuggestionsTab userId={userId} householdId={householdId} />
+            <div className="border-t border-gray-100 mx-4 my-1" />
+            <MealPlanTab userId={userId} householdId={householdId} />
+          </>
+        )}
+        {activeTab === 'grocery' && (
+          <GroceryTab userId={userId} householdId={householdId} />
         )}
         {activeTab === 'log' && (
           <LogMealTab userId={userId} householdId={householdId} />
