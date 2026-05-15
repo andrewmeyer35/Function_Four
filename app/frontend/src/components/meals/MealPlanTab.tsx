@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { MealPlanDay } from './MealPlanDay'
 import { RecipePicker } from './RecipePicker'
 import { ShoppingList } from './ShoppingList'
 import { ImportRecipeTab } from './ImportRecipeTab'
 import type { RecipeJSON } from '@/lib/meals/types'
+import { getWeekStart } from '@/lib/meals/utils'
 
 const DAY_LABELS = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
@@ -45,18 +46,6 @@ interface LowStockItem {
   min_quantity: number | null
 }
 
-function getWeekStart(): string {
-  const today = new Date()
-  const day = today.getDay() // 0=Sun, 6=Sat
-  const diffToSat = day === 6 ? 0 : -(day + 1)
-  const sat = new Date(today)
-  sat.setDate(today.getDate() + diffToSat)
-  // Local date components — avoids UTC offset shifting the day for users west of UTC
-  const y = sat.getFullYear()
-  const m = String(sat.getMonth() + 1).padStart(2, '0')
-  const d = String(sat.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 interface Props {
   userId: string
@@ -68,31 +57,59 @@ export function MealPlanTab({ userId, householdId }: Props) {
   const weekStart = getWeekStart()
   const [entries, setEntries] = useState<PlanEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [pickerDay, setPickerDay] = useState<number | null>(null)
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([])
   const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([])
   const [listLoading, setListLoading] = useState(false)
+  const mountedRef = useRef(true)
+  const planAbortRef = useRef<AbortController | null>(null)
+  const listAbortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    mountedRef.current = false
+    planAbortRef.current?.abort()
+    listAbortRef.current?.abort()
+  }, [])
 
   const loadPlan = useCallback(async () => {
+    planAbortRef.current?.abort()
+    const controller = new AbortController()
+    planAbortRef.current = controller
     setLoading(true)
+    setError(null)
     try {
-      const res = await fetch(`/api/meal-plan?weekStart=${weekStart}`)
+      const res = await fetch(`/api/meal-plan?weekStart=${weekStart}`, { signal: controller.signal })
+      if (!mountedRef.current) return
       const json = await res.json() as { entries: PlanEntry[] }
+      if (!mountedRef.current) return
       setEntries(json.entries ?? [])
+    } catch (err) {
+      if (!mountedRef.current) return
+      if (err instanceof Error && err.name === 'AbortError') return
+      setError('Could not load meal plan')
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [weekStart])
 
   const loadShoppingList = useCallback(async () => {
+    listAbortRef.current?.abort()
+    const controller = new AbortController()
+    listAbortRef.current = controller
     setListLoading(true)
     try {
-      const res = await fetch(`/api/shopping-list?weekStart=${weekStart}`)
+      const res = await fetch(`/api/shopping-list?weekStart=${weekStart}`, { signal: controller.signal })
+      if (!mountedRef.current) return
       const json = await res.json() as { shoppingItems: ShoppingItem[]; lowStockItems: LowStockItem[] }
+      if (!mountedRef.current) return
       setShoppingItems(json.shoppingItems ?? [])
       setLowStockItems(json.lowStockItems ?? [])
+    } catch (err) {
+      if (!mountedRef.current) return
+      if (err instanceof Error && err.name === 'AbortError') return
     } finally {
-      setListLoading(false)
+      if (mountedRef.current) setListLoading(false)
     }
   }, [weekStart])
 
@@ -157,6 +174,13 @@ export function MealPlanTab({ userId, householdId }: Props) {
         <span className="text-xs text-gray-400">{entries.length}/7 days planned</span>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div className="px-3 py-2.5 bg-red-50 rounded-xl border border-red-100">
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
       {/* Day grid */}
       {loading ? (
         <div className="flex justify-center py-8">
@@ -165,18 +189,23 @@ export function MealPlanTab({ userId, householdId }: Props) {
           </svg>
         </div>
       ) : (
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-          {DAY_LABELS.map((label, i) => (
-            <MealPlanDay
-              key={i}
-              dayLabel={label}
-              dayIndex={i}
-              entry={entryByDay(i)}
-              onAdd={setPickerDay}
-              onRemove={handleRemove}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+            {DAY_LABELS.map((label, i) => (
+              <MealPlanDay
+                key={i}
+                dayLabel={label}
+                dayIndex={i}
+                entry={entryByDay(i)}
+                onAdd={setPickerDay}
+                onRemove={handleRemove}
+              />
+            ))}
+          </div>
+          {entries.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-1">No meals planned yet — tap + to add</p>
+          )}
+        </>
       )}
 
       {/* Shopping list */}

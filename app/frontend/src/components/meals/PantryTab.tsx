@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { AddPantryForm } from './AddPantryForm'
 import { PantryItemCard } from './PantryItemCard'
 
@@ -26,19 +26,33 @@ export function PantryTab({ userId: _userId, householdId: _householdId }: Props)
   const [items, setItems] = useState<PantryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    mountedRef.current = false
+    abortRef.current?.abort()
+  }, [])
 
   const load = useCallback(async () => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/pantry')
+      const res = await fetch('/api/pantry', { signal: controller.signal })
+      if (!mountedRef.current) return
       const json = await res.json() as PantryRow[] | { error: string }
+      if (!mountedRef.current) return
       if (!res.ok) throw new Error((json as { error: string }).error)
       setItems(json as PantryRow[])
     } catch (err) {
+      if (!mountedRef.current) return
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(String(err))
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [])
 

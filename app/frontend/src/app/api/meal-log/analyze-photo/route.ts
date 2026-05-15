@@ -201,7 +201,7 @@ Return ONLY the JSON. No markdown, no explanation.`,
           ],
         },
       ],
-    })
+    }, { signal: AbortSignal.timeout(15_000) })
   } catch (err) {
     return NextResponse.json({ error: `Vision API failed: ${String(err)}` }, { status: 500 })
   }
@@ -222,9 +222,11 @@ Return ONLY the JSON. No markdown, no explanation.`,
   // If confident match with a planned meal, use its recipe ingredients for accuracy
   if (analysis.dishConfidence >= 0.75 && plannedMeals.length > 0) {
     const dishLower = analysis.dish.toLowerCase()
-    const matched = plannedMeals.find(
-      (m) => m.title.toLowerCase().includes(dishLower) || dishLower.includes(m.title.toLowerCase())
-    )
+    const matched = plannedMeals.find((m) => {
+      const planTitle = m.title.toLowerCase()
+      const words = planTitle.split(' ')
+      return words.every(w => dishLower.includes(w)) && dishLower.length < planTitle.length * 2
+    })
     if (matched && matched.ingredients.length > 0) {
       analysis = {
         ...analysis,

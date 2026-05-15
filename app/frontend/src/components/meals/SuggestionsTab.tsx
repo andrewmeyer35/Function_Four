@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { CatalogBrowser } from './CatalogBrowser'
 import { AddToPlanDrawer } from './AddToPlanDrawer'
 import { MissingIngredientsDrawer } from './MissingIngredientsDrawer'
+import { getWeekStart } from '@/lib/meals/utils'
 
 interface Suggestion {
   recipeImportId: string | null
@@ -52,17 +53,6 @@ interface Props {
   householdId: string | null
 }
 
-function getWeekStart(): string {
-  const today = new Date()
-  const day = today.getDay()
-  const diffToSat = day === 6 ? 0 : -(day + 1)
-  const sat = new Date(today)
-  sat.setDate(today.getDate() + diffToSat)
-  const y = sat.getFullYear()
-  const m = String(sat.getMonth() + 1).padStart(2, '0')
-  const d = String(sat.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null
@@ -78,6 +68,7 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
   const [error, setError] = useState<string | null>(null)
   const [selectedRecipe, setSelectedRecipe] = useState<CatalogRecipe | null>(null)
   const [missingItems, setMissingItems] = useState<MissingItem[]>([])
+  const mountedRef = useRef(true)
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -90,16 +81,20 @@ export function SuggestionsTab({ userId: _userId, householdId: _householdId }: P
         return r.json() as Promise<{ suggestions: Suggestion[]; expiringItems: ExpiringItem[]; lowStockItems: LowItem[] }>
       })
       .then((json) => {
+        if (!mountedRef.current) return
         setSuggestions(json.suggestions ?? [])
         setExpiring(json.expiringItems ?? [])
         setLowStock(json.lowStockItems ?? [])
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') return
+        if (!mountedRef.current) return
         setError('Could not load suggestions')
       })
-      .finally(() => setLoading(false))
-    return () => ctrl.abort()
+      .finally(() => {
+        if (mountedRef.current) setLoading(false)
+      })
+    return () => { mountedRef.current = false; ctrl.abort() }
   }, [])
 
   if (loading) {

@@ -227,7 +227,7 @@ Return ONLY a JSON array of strings in the same order as the recipes. Example: [
 
 Return ONLY the JSON array. No markdown.`,
         }],
-      })
+      }, { signal: AbortSignal.timeout(10_000) })
 
       const rawText = msg.content[0].type === 'text' ? msg.content[0].text : '[]'
       const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()

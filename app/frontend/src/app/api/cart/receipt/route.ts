@@ -12,6 +12,8 @@ export interface ReceiptMatch {
   cartItemId: string
   cartItemName: string
   receiptName: string
+  quantity: number | null
+  unit: string | null
 }
 
 function normalize(s: string): string {
@@ -135,7 +137,7 @@ No quantities, no prices, no markdown, no explanation. Just the JSON array.`,
     for (const cartItem of items) {
       if (matchedCartIds.has(cartItem.id)) continue
       if (fuzzyMatch(receiptName, cartItem.name)) {
-        matches.push({ cartItemId: cartItem.id, cartItemName: cartItem.name, receiptName })
+        matches.push({ cartItemId: cartItem.id, cartItemName: cartItem.name, receiptName, quantity: cartItem.quantity ?? null, unit: cartItem.unit ?? null })
         matchedCartIds.add(cartItem.id)
         break
       }
